@@ -152,27 +152,112 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Get the content from the response
     const content = completion.choices[0].message.content;
     console.log('Roadmap structure generated successfully');
+    console.log('Raw content received:', typeof content, content ? content.substring(0, 50) + '...' : 'null');
     
     // Parse the roadmap structure
     let roadmapStructure;
     try {
-      roadmapStructure = JSON.parse(content || '{}');
-      console.log(`Parsed roadmap with ${roadmapStructure.steps?.length || 0} steps`);
+      // First, ensure content is a valid string
+      if (!content || typeof content !== 'string') {
+        throw new Error('OpenAI returned empty or invalid content');
+      }
+      
+      // Try to clean the content if it has non-JSON characters
+      let cleanedContent = content.trim();
+      // Remove any markdown code block markers that might be present
+      if (cleanedContent.startsWith('```json')) {
+        cleanedContent = cleanedContent.substring(7);
+      }
+      if (cleanedContent.startsWith('```')) {
+        cleanedContent = cleanedContent.substring(3);
+      }
+      if (cleanedContent.endsWith('```')) {
+        cleanedContent = cleanedContent.substring(0, cleanedContent.length - 3);
+      }
+      cleanedContent = cleanedContent.trim();
+      
+      roadmapStructure = JSON.parse(cleanedContent);
+      
+      // Verify structure has steps
+      if (!roadmapStructure.steps || !Array.isArray(roadmapStructure.steps)) {
+        throw new Error('Invalid roadmap structure: missing steps array');
+      }
+      
+      console.log(`Parsed roadmap with ${roadmapStructure.steps.length} steps`);
     } catch (e) {
       console.error('Error parsing JSON from response:', e);
-      throw new Error('Failed to parse roadmap structure');
+      console.error('Raw content causing error:', content);
+      
+      // Provide a fallback structure
+      roadmapStructure = {
+        steps: [
+          {
+            title: `Learning ${userAnswers.topic} - Step 1`,
+            description: `Getting started with ${userAnswers.topic}`,
+            resources: [
+              {
+                title: `Introduction to ${userAnswers.topic}`,
+                type: userAnswers.contentPreference || 'article',
+                description: `Learn the basics of ${userAnswers.topic}`,
+                timeEstimate: '30 min'
+              },
+              {
+                title: `${userAnswers.topic} fundamentals`,
+                type: 'video',
+                description: `Core concepts of ${userAnswers.topic}`,
+                timeEstimate: '45 min'
+              }
+            ]
+          },
+          {
+            title: `Learning ${userAnswers.topic} - Step 2`,
+            description: `Building on your knowledge of ${userAnswers.topic}`,
+            resources: [
+              {
+                title: `Intermediate ${userAnswers.topic}`,
+                type: 'tutorial',
+                description: `Advance your understanding of ${userAnswers.topic}`,
+                timeEstimate: '60 min'
+              }
+            ]
+          }
+        ]
+      };
+      console.log('Using fallback roadmap structure instead');
     }
     
     // Step 2: Enhance the roadmap with real resources using Google Search
     console.log('Step 2: Enhancing roadmap with real resources...');
     
-    const enhancedSteps = [];
+    // Define interfaces for our data structures
+    interface Resource {
+      id: string;
+      title: string;
+      type: string;
+      link: string;
+      timeEstimate: string;
+      source: string;
+      description: string;
+      completed: boolean;
+    }
+    
+    interface Step {
+      id: string;
+      stepNumber: number;
+      title: string;
+      description: string;
+      resources: Resource[];
+      completed: boolean;
+      timeEstimate: string;
+    }
+    
+    const enhancedSteps: Step[] = [];
     
     // Process each step sequentially
     for (let i = 0; i < roadmapStructure.steps.length; i++) {
       console.log(`Processing step ${i+1}/${roadmapStructure.steps.length}`);
       const step = roadmapStructure.steps[i];
-      const enhancedResources = [];
+      const enhancedResources: Resource[] = [];
       
       // Process each resource
       for (let j = 0; j < step.resources.length; j++) {
