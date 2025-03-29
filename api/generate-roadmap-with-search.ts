@@ -431,5 +431,5 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
   }
 };
 
-// Export using ES module syntax
+// Export the handler function using ES Module syntax
 export default handler; 

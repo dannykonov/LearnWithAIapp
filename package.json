@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:vercel": "tsc && vite build",
+    "build:vercel": "tsc && vite build && npm run rename-api-files",
+    "rename-api-files": "find ./dist-api -name \"*.js\" -type f -exec bash -c 'mv \"$0\" \"${0%.js}.cjs\"' {} \\;",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview"
