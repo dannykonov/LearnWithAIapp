@@ -1,0 +1,181 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 195 53% 94%;
+    --foreground: 210 54% 33%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 54% 33%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 54% 33%;
+
+    --primary: 210 54% 33%;
+    --primary-foreground: 195 53% 94%;
+
+    --secondary: 195 52% 63%;
+    --secondary-foreground: 210 54% 33%;
+
+    --muted: 195 53% 94%;
+    --muted-foreground: 210 40% 50%;
+
+    --accent: 195 52% 63%;
+    --accent-foreground: 210 54% 33%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 195 53% 94%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 210 54% 33%;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 210 54% 23%;
+    --foreground: 195 53% 94%;
+
+    --card: 210 54% 33%;
+    --card-foreground: 195 53% 94%;
+
+    --popover: 210 54% 33%;
+    --popover-foreground: 195 53% 94%;
+
+    --primary: 195 53% 94%;
+    --primary-foreground: 210 54% 33%;
+
+    --secondary: 195 52% 63%;
+    --secondary-foreground: 210 54% 33%;
+
+    --muted: 210 40% 40%;
+    --muted-foreground: 195 40% 84%;
+
+    --accent: 195 52% 63%;
+    --accent-foreground: 210 54% 33%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 195 53% 94%;
+
+    --border: 210 40% 40%;
+    --input: 210 40% 40%;
+    --ring: 195 53% 94%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "ss02", "cv01", "cv02", "cv03";
+  }
+}
+
+@layer components {
+  .hover-scale {
+    @apply transition-transform duration-200 hover:scale-105;
+  }
+  
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-md border border-white/40 shadow-md rounded-xl;
+  }
+
+  .roadmap-card {
+    @apply glass-card p-6 relative overflow-hidden hover:shadow-xl transition-all duration-300;
+  }
+
+  .roadmap-card.completed {
+    @apply bg-lwai-lightBlue/30 border-lwai-skyBlue/50;
+  }
+  
+  .roadmap-connection {
+    @apply absolute w-1.5 bg-gradient-to-b from-lwai-skyBlue to-lwai-lightBlue left-7 h-14 -z-10;
+  }
+
+  .roadmap-path {
+    @apply absolute w-1 bg-gradient-to-b from-lwai-skyBlue/80 to-lwai-lightBlue/80 left-7 top-14 bottom-0 -z-10;
+  }
+  
+  .milestone-marker {
+    @apply absolute w-6 h-6 rounded-full bg-lwai-accent text-white flex items-center justify-center -left-3 top-1/2 transform -translate-y-1/2 z-10 animate-pulse shadow-md;
+  }
+
+  .badge-resource {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium shadow-sm;
+  }
+
+  .badge-video {
+    @apply badge-resource bg-blue-100 text-blue-800 border border-blue-200;
+  }
+
+  .badge-article {
+    @apply badge-resource bg-green-100 text-green-800 border border-green-200;
+  }
+
+  .badge-interactive {
+    @apply badge-resource bg-purple-100 text-purple-800 border border-purple-200;
+  }
+
+  .badge-pdf {
+    @apply badge-resource bg-red-100 text-red-800 border border-red-200;
+  }
+
+  .badge-podcast {
+    @apply badge-resource bg-yellow-100 text-yellow-800 border border-yellow-200;
+  }
+
+  .badge-thread {
+    @apply badge-resource bg-indigo-100 text-indigo-800 border border-indigo-200;
+  }
+
+  .confetti {
+    @apply fixed w-4 h-4 rounded-full;
+  }
+  
+  /* Enhanced gamification elements */
+  .achievement-badge {
+    @apply inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-lwai-deepBlue to-lwai-skyBlue text-white shadow-lg transition-transform duration-300 hover:scale-110;
+  }
+  
+  .road-sign {
+    @apply absolute -left-3 -top-3 w-7 h-7 bg-lwai-deepBlue text-white rounded-full flex items-center justify-center z-10 border-2 border-white shadow-md;
+  }
+  
+  .level-up-animation {
+    @apply animate-bounce-small;
+  }
+  
+  .road-milestone {
+    @apply absolute left-7 w-10 h-10 bg-lwai-accent rounded-full -translate-x-1/2 flex items-center justify-center text-white font-bold text-xs shadow-lg z-20;
+  }
+  
+  .progress-spark {
+    @apply absolute w-2 h-2 rounded-full bg-yellow-300 animate-ping;
+  }
+}
+
+/* Enhanced animations for gamification */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes road-progress {
+  0% { width: 0; opacity: 0.7; }
+  100% { width: 100%; opacity: 1; }
+}
+
+.road-progress-animation {
+  animation: road-progress 1s ease-out forwards;
+}
