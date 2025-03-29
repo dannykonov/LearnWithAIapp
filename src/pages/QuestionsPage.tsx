@@ -48,7 +48,20 @@ const QuestionsPage = () => {
   const handleSubmit = async () => {
     setIsLoading(true);
     try {
-      const roadmapData = await generateRoadmap(userAnswers);
+      // Sanitize inputs before submission to ensure they match expected patterns
+      const sanitizedAnswers = { 
+        ...userAnswers,
+        // Ensure contentPreference is one of the valid types
+        contentPreference: (() => {
+          const validTypes = ['video', 'article', 'interactive', 'pdf', 'podcast', 'thread'];
+          return validTypes.includes(userAnswers.contentPreference) 
+            ? userAnswers.contentPreference 
+            : 'article';
+        })()
+      };
+      
+      // Use sanitized answers for the API call
+      const roadmapData = await generateRoadmap(sanitizedAnswers);
       setRoadmap(roadmapData);
       navigate('/roadmap');
       

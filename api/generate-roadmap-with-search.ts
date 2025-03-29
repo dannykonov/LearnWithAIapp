@@ -98,6 +98,36 @@ function getRealResourceURL(title: string, type: string): string {
   return `https://${platform}?q=${encodeURIComponent(title)}`;
 }
 
+// Fallback function to extract valid JSON from text, even if corrupted
+function extractJSONFromString(str: string): any {
+  // If we have a valid JSON, just parse it
+  try {
+    return JSON.parse(str);
+  } catch (e) {
+    // Not valid JSON, let's try to extract it
+    console.log("Attempting to extract valid JSON from string...");
+  }
+
+  // Look for JSON-like structures
+  let jsonStart = str.indexOf('{');
+  let jsonEnd = str.lastIndexOf('}');
+  
+  if (jsonStart >= 0 && jsonEnd >= 0 && jsonEnd > jsonStart) {
+    let possibleJSON = str.substring(jsonStart, jsonEnd + 1);
+    try {
+      return JSON.parse(possibleJSON);
+    } catch (e) {
+      console.log("First extraction attempt failed, trying more aggressive cleaning");
+    }
+  }
+  
+  // Very aggressive approach - create a minimal valid structure
+  console.log("Creating fallback structure");
+  return {
+    steps: []
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -125,11 +155,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           
           For each resource, provide:
           - Title (be specific about what should be learned)
-          - Type (video|article|interactive|course|tutorial|pdf|podcast)
+          - Type (ONLY use these exact values: video, article, interactive, pdf, podcast, thread)
           - Brief description of what this resource should cover
           - Approximate time commitment (15min, 30min, 1hr, etc.)
           
-          Format your response as a JSON object with a "steps" array.`
+          IMPORTANT: Your response MUST be a valid JSON object with a "steps" array like this example:
+          {
+            "steps": [
+              {
+                "title": "Step title",
+                "description": "Step description",
+                "resources": [
+                  {
+                    "title": "Resource title",
+                    "type": "video",
+                    "description": "Resource description",
+                    "timeEstimate": "30 min"
+                  }
+                ]
+              }
+            ]
+          }
+          
+          DO NOT include any text before or after the JSON. Your entire response must be valid JSON.`
         },
         {
           role: "user",
@@ -162,21 +210,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw new Error('OpenAI returned empty or invalid content');
       }
       
-      // Try to clean the content if it has non-JSON characters
-      let cleanedContent = content.trim();
-      // Remove any markdown code block markers that might be present
-      if (cleanedContent.startsWith('```json')) {
-        cleanedContent = cleanedContent.substring(7);
-      }
-      if (cleanedContent.startsWith('```')) {
-        cleanedContent = cleanedContent.substring(3);
-      }
-      if (cleanedContent.endsWith('```')) {
-        cleanedContent = cleanedContent.substring(0, cleanedContent.length - 3);
-      }
-      cleanedContent = cleanedContent.trim();
-      
-      roadmapStructure = JSON.parse(cleanedContent);
+      // Try our custom JSON extractor which works even with malformed input
+      roadmapStructure = extractJSONFromString(content);
       
       // Verify structure has steps
       if (!roadmapStructure.steps || !Array.isArray(roadmapStructure.steps)) {
@@ -264,12 +299,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const resource = step.resources[j];
         console.log(`Processing resource ${j+1}/${step.resources.length}: ${resource.title}`);
         
+        // Validate resource type to match frontend expectations
+        // IMPORTANT: Must match the ResourceType in the frontend
+        const validTypes = ['video', 'article', 'interactive', 'pdf', 'podcast', 'thread'];
+        const type = validTypes.includes(resource.type?.toLowerCase()) 
+          ? resource.type.toLowerCase() 
+          : (userAnswers.contentPreference && validTypes.includes(userAnswers.contentPreference) 
+              ? userAnswers.contentPreference 
+              : 'article');
+        
         // Create a detailed search query based on the topic and resource
         const searchQuery = `${userAnswers.topic} ${resource.title} ${resource.description || ''}`;
         
         try {
           // Wait for the search result
-          const searchResult = await searchResource(searchQuery, resource.type);
+          const searchResult = await searchResource(searchQuery, type);
           
           // Check if the result has a valid link (not example.com)
           let finalLink = searchResult.link;
@@ -277,14 +321,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // If link contains example.com or is empty, use our backup strategy
           if (!finalLink || finalLink.includes('example.com')) {
             console.log('Search returned invalid link, using direct platform URL');
-            finalLink = getRealResourceURL(resource.title, resource.type);
+            finalLink = getRealResourceURL(resource.title, type);
           }
           
           // Combine the original resource info with the search result
           enhancedResources.push({
             id: uuidv4(),
             title: resource.title || searchResult.title,
-            type: resource.type || 'article',
+            type: type,
             link: finalLink,
             timeEstimate: resource.timeEstimate || resource.time || '30 min',
             source: searchResult.source,
@@ -298,8 +342,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           enhancedResources.push({
             id: uuidv4(),
             title: resource.title,
-            type: resource.type || 'article',
-            link: getRealResourceURL(resource.title, resource.type),
+            type: type,
+            link: getRealResourceURL(resource.title, type),
             timeEstimate: resource.timeEstimate || resource.time || '30 min',
             source: 'Recommended Platform',
             description: resource.description || '',
