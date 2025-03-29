@@ -13,9 +13,9 @@ console.log('OPENAI_API_KEY present:', !!process.env.OPENAI_API_KEY);
 console.log('GOOGLE_API_KEY present:', !!process.env.GOOGLE_API_KEY);
 console.log('GOOGLE_CSE_ID present:', !!process.env.GOOGLE_CSE_ID);
 
-// Initialize OpenAI client
+// Initialize OpenAI client using ES module compatible approach
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY || ''
 });
 
 // Google Search API configuration
@@ -23,7 +23,7 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
 
 // Function to search for resources using Google Custom Search API
-async function searchResource(query: string, contentType: string): Promise<{ title: string; link: string; source: string }> {
+const searchResource = async (query: string, contentType: string): Promise<{ title: string; link: string; source: string }> => {
   try {
     console.log(`Searching for: "${query}" [${contentType}]`);
     
@@ -73,10 +73,10 @@ async function searchResource(query: string, contentType: string): Promise<{ tit
       source: 'Google Search (Fallback)'
     };
   }
-}
+};
 
 // Helper function to create a real resource URL when Google search fails
-function getRealResourceURL(title: string, type: string): string {
+const getRealResourceURL = (title: string, type: string): string => {
   // Map of popular platforms based on content type
   const platforms: Record<string, string[]> = {
     'video': ['youtube.com/results', 'coursera.org/search', 'udemy.com/courses/search'],
@@ -97,10 +97,10 @@ function getRealResourceURL(title: string, type: string): string {
   const platform = platformList[Math.floor(Math.random() * platformList.length)];
   
   return `https://${platform}?q=${encodeURIComponent(title)}`;
-}
+};
 
 // Fallback function to extract valid JSON from text, even if corrupted
-function extractJSONFromString(str: string): any {
+const extractJSONFromString = (str: string): any => {
   // If we have a valid JSON, just parse it
   try {
     return JSON.parse(str);
@@ -127,10 +127,32 @@ function extractJSONFromString(str: string): any {
   return {
     steps: []
   };
+};
+
+// Define interfaces for our data structures
+interface Resource {
+  id: string;
+  title: string;
+  type: string;
+  link: string;
+  timeEstimate: string;
+  source: string;
+  description: string;
+  completed: boolean;
 }
 
-// Main handler function
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+interface Step {
+  id: string;
+  stepNumber: number;
+  title: string;
+  description: string;
+  resources: Resource[];
+  completed: boolean;
+  timeEstimate: string;
+}
+
+// Main handler function - explicitly use ESM export
+const handler = async (req: VercelRequest, res: VercelResponse) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -298,28 +320,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Step 2: Enhance the roadmap with real resources using Google Search
       console.log('Step 2: Enhancing roadmap with real resources...');
       
-      // Define interfaces for our data structures
-      interface Resource {
-        id: string;
-        title: string;
-        type: string;
-        link: string;
-        timeEstimate: string;
-        source: string;
-        description: string;
-        completed: boolean;
-      }
-      
-      interface Step {
-        id: string;
-        stepNumber: number;
-        title: string;
-        description: string;
-        resources: Resource[];
-        completed: boolean;
-        timeEstimate: string;
-      }
-      
       const enhancedSteps: Step[] = [];
       
       // Process each step sequentially
@@ -429,4 +429,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       detail: process.env.NODE_ENV === 'development' ? error.toString() : undefined
     });
   }
-} 
+};
+
+// Export using ES module syntax
+export default handler; 
