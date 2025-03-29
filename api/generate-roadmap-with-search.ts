@@ -7,6 +7,12 @@ import axios from 'axios';
 // Load environment variables
 dotenv.config();
 
+// Log environment variables presence at startup
+console.log('API INIT - Environment variables check:');
+console.log('OPENAI_API_KEY present:', !!process.env.OPENAI_API_KEY);
+console.log('GOOGLE_API_KEY present:', !!process.env.GOOGLE_API_KEY);
+console.log('GOOGLE_CSE_ID present:', !!process.env.GOOGLE_CSE_ID);
+
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -19,6 +25,8 @@ const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
 // Function to search for resources using Google Custom Search API
 async function searchResource(query: string, contentType: string): Promise<{ title: string; link: string; source: string }> {
   try {
+    console.log(`Searching for: "${query}" [${contentType}]`);
+    
     // Add content type to the query if specified (video, course, article, etc.)
     const searchQuery = contentType ? `${query} ${contentType}` : query;
     
@@ -32,6 +40,8 @@ async function searchResource(query: string, contentType: string): Promise<{ tit
       }
     });
     
+    console.log('Search successful, items:', response.data.items?.length || 0);
+    
     if (response.data.items && response.data.items.length > 0) {
       const result = response.data.items[0];
       return {
@@ -41,14 +51,21 @@ async function searchResource(query: string, contentType: string): Promise<{ tit
       };
     }
     
+    console.log('No search results found, using fallback');
     // If no results, return a fallback
     return {
       title: query,
       link: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`,
       source: 'Google Search'
     };
-  } catch (error) {
-    console.error('Error searching for resource:', error);
+  } catch (error: any) {
+    console.error('Error searching for resource:', error.message);
+    console.error('Query was:', query);
+    if (error.response) {
+      console.error('Status:', error.response.status);
+      console.error('Data:', JSON.stringify(error.response.data));
+    }
+    
     // Return a fallback on error
     return {
       title: query,
@@ -56,6 +73,29 @@ async function searchResource(query: string, contentType: string): Promise<{ tit
       source: 'Google Search (Fallback)'
     };
   }
+}
+
+// Helper function to create a real resource URL when Google search fails
+function getRealResourceURL(title: string, type: string): string {
+  // Map of popular platforms based on content type
+  const platforms: Record<string, string[]> = {
+    'video': ['youtube.com/results', 'coursera.org/search', 'udemy.com/courses/search'],
+    'article': ['medium.com/search', 'dev.to/search', 'freecodecamp.org/news/search'],
+    'course': ['udemy.com/courses/search', 'coursera.org/search', 'edx.org/search'],
+    'interactive': ['codecademy.com/search', 'freecodecamp.org/learn', 'w3schools.com'],
+    'tutorial': ['tutorialspoint.com/search', 'w3schools.com/search', 'geeksforgeeks.org/search'],
+    'pdf': ['pdfdrive.com/search', 'academia.edu/search', 'researchgate.net/search'],
+    'podcast': ['spotify.com/search', 'apple.com/apple-podcasts', 'listennotes.com/search'],
+  };
+  
+  // Default to article if type not found
+  const contentType = type.toLowerCase();
+  const platformList = platforms[contentType] || platforms['article'];
+  
+  // Pick a platform based on the content
+  const platform = platformList[Math.floor(Math.random() * platformList.length)];
+  
+  return `https://${platform}?q=${encodeURIComponent(title)}`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -66,7 +106,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const userAnswers = req.body;
     
-    console.log('Generating roadmap structure with ChatGPT...');
+    console.log('Starting roadmap generation for topic:', userAnswers.topic);
+    console.log('Step 1: Generating roadmap structure with ChatGPT...');
     
     // Step 1: Generate the roadmap structure using ChatGPT
     const completion = await openai.chat.completions.create({
@@ -84,7 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           
           For each resource, provide:
           - Title (be specific about what should be learned)
-          - Type (video/article/interactive/course/tutorial/pdf/podcast)
+          - Type (video|article|interactive|course|tutorial|pdf|podcast)
           - Brief description of what this resource should cover
           - Approximate time commitment (15min, 30min, 1hr, etc.)
           
@@ -110,47 +151,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Get the content from the response
     const content = completion.choices[0].message.content;
+    console.log('Roadmap structure generated successfully');
     
     // Parse the roadmap structure
     let roadmapStructure;
     try {
       roadmapStructure = JSON.parse(content || '{}');
+      console.log(`Parsed roadmap with ${roadmapStructure.steps?.length || 0} steps`);
     } catch (e) {
       console.error('Error parsing JSON from response:', e);
       throw new Error('Failed to parse roadmap structure');
     }
     
     // Step 2: Enhance the roadmap with real resources using Google Search
-    console.log('Enhancing roadmap with real resources...');
+    console.log('Step 2: Enhancing roadmap with real resources...');
     
     const enhancedSteps = [];
     
     // Process each step sequentially
     for (let i = 0; i < roadmapStructure.steps.length; i++) {
+      console.log(`Processing step ${i+1}/${roadmapStructure.steps.length}`);
       const step = roadmapStructure.steps[i];
       const enhancedResources = [];
       
       // Process each resource
       for (let j = 0; j < step.resources.length; j++) {
         const resource = step.resources[j];
+        console.log(`Processing resource ${j+1}/${step.resources.length}: ${resource.title}`);
         
         // Create a detailed search query based on the topic and resource
         const searchQuery = `${userAnswers.topic} ${resource.title} ${resource.description || ''}`;
         
-        // Wait for the search result
-        const searchResult = await searchResource(searchQuery, resource.type);
-        
-        // Combine the original resource info with the search result
-        enhancedResources.push({
-          id: uuidv4(),
-          title: resource.title || searchResult.title,
-          type: resource.type || 'article',
-          link: searchResult.link,
-          timeEstimate: resource.timeEstimate || resource.time || '30 min',
-          source: searchResult.source,
-          description: resource.description || '',
-          completed: false
-        });
+        try {
+          // Wait for the search result
+          const searchResult = await searchResource(searchQuery, resource.type);
+          
+          // Check if the result has a valid link (not example.com)
+          let finalLink = searchResult.link;
+          
+          // If link contains example.com or is empty, use our backup strategy
+          if (!finalLink || finalLink.includes('example.com')) {
+            console.log('Search returned invalid link, using direct platform URL');
+            finalLink = getRealResourceURL(resource.title, resource.type);
+          }
+          
+          // Combine the original resource info with the search result
+          enhancedResources.push({
+            id: uuidv4(),
+            title: resource.title || searchResult.title,
+            type: resource.type || 'article',
+            link: finalLink,
+            timeEstimate: resource.timeEstimate || resource.time || '30 min',
+            source: searchResult.source,
+            description: resource.description || '',
+            completed: false
+          });
+        } catch (e) {
+          console.error(`Error processing resource ${j+1}:`, e);
+          
+          // Add a fallback resource if search fails
+          enhancedResources.push({
+            id: uuidv4(),
+            title: resource.title,
+            type: resource.type || 'article',
+            link: getRealResourceURL(resource.title, resource.type),
+            timeEstimate: resource.timeEstimate || resource.time || '30 min',
+            source: 'Recommended Platform',
+            description: resource.description || '',
+            completed: false
+          });
+        }
       }
       
       // Calculate total time estimate for the step
@@ -172,6 +242,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
     
+    console.log('Roadmap generation complete, sending response');
     return res.status(200).json(enhancedSteps);
   } catch (error: any) {
     console.error('Error generating roadmap:', error);
