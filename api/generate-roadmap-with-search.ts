@@ -86,6 +86,7 @@ function getRealResourceURL(title: string, type: string): string {
     'tutorial': ['tutorialspoint.com/search', 'w3schools.com/search', 'geeksforgeeks.org/search'],
     'pdf': ['pdfdrive.com/search', 'academia.edu/search', 'researchgate.net/search'],
     'podcast': ['spotify.com/search', 'apple.com/apple-podcasts', 'listennotes.com/search'],
+    'thread': ['reddit.com/search', 'stackoverflow.com/search', 'quora.com/search']
   };
   
   // Default to article if type not found
@@ -128,6 +129,7 @@ function extractJSONFromString(str: string): any {
   };
 }
 
+// Main handler function
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
