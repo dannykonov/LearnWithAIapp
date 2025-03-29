@@ -134,250 +134,297 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const userAnswers = req.body;
+    console.log('API called with request method:', req.method);
+    
+    // Check if we have the OpenAI key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('ERROR: Missing OPENAI_API_KEY environment variable');
+      return res.status(500).json({ 
+        error: 'Server configuration error', 
+        message: 'OpenAI API key is missing' 
+      });
+    }
+
+    // Check if we have the Google API key
+    if (!process.env.GOOGLE_API_KEY || !process.env.GOOGLE_CSE_ID) {
+      console.error('WARNING: Missing Google API key or CSE ID - search will be limited');
+    }
+
+    // Parse the user's answers
+    let userAnswers;
+    try {
+      userAnswers = req.body;
+      console.log('Received user answers for topic:', userAnswers.topic);
+      
+      if (!userAnswers || !userAnswers.topic) {
+        throw new Error('Invalid request body - missing topic');
+      }
+    } catch (e) {
+      console.error('ERROR: Failed to parse request body:', e);
+      return res.status(400).json({ 
+        error: 'Invalid request', 
+        message: 'Could not parse request body' 
+      });
+    }
     
     console.log('Starting roadmap generation for topic:', userAnswers.topic);
     console.log('Step 1: Generating roadmap structure with ChatGPT...');
     
     // Step 1: Generate the roadmap structure using ChatGPT
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo", // Using 3.5 to reduce costs, can use gpt-4 for better quality
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert educational content creator with deep knowledge of learning pathways.
-          Your task is to create a personalized 5-step learning roadmap structure for someone learning ${userAnswers.topic}.
-          
-          For each step, include:
-          1. A clear, descriptive title showing progression through the topic
-          2. A detailed description of what the learner should understand by the end of this step
-          3. 2-3 specific resource topics (not URLs, just describe what the resource should cover)
-          
-          For each resource, provide:
-          - Title (be specific about what should be learned)
-          - Type (ONLY use these exact values: video, article, interactive, pdf, podcast, thread)
-          - Brief description of what this resource should cover
-          - Approximate time commitment (15min, 30min, 1hr, etc.)
-          
-          IMPORTANT: Your response MUST be a valid JSON object with a "steps" array like this example:
-          {
-            "steps": [
-              {
-                "title": "Step title",
-                "description": "Step description",
-                "resources": [
-                  {
-                    "title": "Resource title",
-                    "type": "video",
-                    "description": "Resource description",
-                    "timeEstimate": "30 min"
-                  }
-                ]
-              }
-            ]
-          }
-          
-          DO NOT include any text before or after the JSON. Your entire response must be valid JSON.`
-        },
-        {
-          role: "user",
-          content: `Create a personalized learning roadmap for ${userAnswers.topic}.
-          
-          About me:
-          - Existing knowledge: ${userAnswers.existingKnowledge}
-          - Background level: ${userAnswers.background}
-          - Learning pace: ${userAnswers.pace}
-          - Preferred content format: ${userAnswers.contentPreference}
-          - Available time: ${userAnswers.availableTime}
-          - Learning goal: ${userAnswers.goal}
-          
-          Provide a logical progression of learning steps that will take me from my current knowledge to my goal.`
-        }
-      ],
-      response_format: { type: "json_object" }
-    });
-
-    // Get the content from the response
-    const content = completion.choices[0].message.content;
-    console.log('Roadmap structure generated successfully');
-    console.log('Raw content received:', typeof content, content ? content.substring(0, 50) + '...' : 'null');
-    
-    // Parse the roadmap structure
-    let roadmapStructure;
     try {
-      // First, ensure content is a valid string
-      if (!content || typeof content !== 'string') {
-        throw new Error('OpenAI returned empty or invalid content');
-      }
-      
-      // Try our custom JSON extractor which works even with malformed input
-      roadmapStructure = extractJSONFromString(content);
-      
-      // Verify structure has steps
-      if (!roadmapStructure.steps || !Array.isArray(roadmapStructure.steps)) {
-        throw new Error('Invalid roadmap structure: missing steps array');
-      }
-      
-      console.log(`Parsed roadmap with ${roadmapStructure.steps.length} steps`);
-    } catch (e) {
-      console.error('Error parsing JSON from response:', e);
-      console.error('Raw content causing error:', content);
-      
-      // Provide a fallback structure
-      roadmapStructure = {
-        steps: [
+      const completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo", // Using 3.5 to reduce costs, can use gpt-4 for better quality
+        messages: [
           {
-            title: `Learning ${userAnswers.topic} - Step 1`,
-            description: `Getting started with ${userAnswers.topic}`,
-            resources: [
-              {
-                title: `Introduction to ${userAnswers.topic}`,
-                type: userAnswers.contentPreference || 'article',
-                description: `Learn the basics of ${userAnswers.topic}`,
-                timeEstimate: '30 min'
-              },
-              {
-                title: `${userAnswers.topic} fundamentals`,
-                type: 'video',
-                description: `Core concepts of ${userAnswers.topic}`,
-                timeEstimate: '45 min'
-              }
-            ]
+            role: "system",
+            content: `You are an expert educational content creator with deep knowledge of learning pathways.
+            Your task is to create a personalized 5-step learning roadmap structure for someone learning ${userAnswers.topic}.
+            
+            For each step, include:
+            1. A clear, descriptive title showing progression through the topic
+            2. A detailed description of what the learner should understand by the end of this step
+            3. 2-3 specific resource topics (not URLs, just describe what the resource should cover)
+            
+            For each resource, provide:
+            - Title (be specific about what should be learned)
+            - Type (ONLY use these exact values: video, article, interactive, pdf, podcast, thread)
+            - Brief description of what this resource should cover
+            - Approximate time commitment (15min, 30min, 1hr, etc.)
+            
+            IMPORTANT: Your response MUST be a valid JSON object with a "steps" array like this example:
+            {
+              "steps": [
+                {
+                  "title": "Step title",
+                  "description": "Step description",
+                  "resources": [
+                    {
+                      "title": "Resource title",
+                      "type": "video",
+                      "description": "Resource description",
+                      "timeEstimate": "30 min"
+                    }
+                  ]
+                }
+              ]
+            }
+            
+            DO NOT include any text before or after the JSON. Your entire response must be valid JSON.`
           },
           {
-            title: `Learning ${userAnswers.topic} - Step 2`,
-            description: `Building on your knowledge of ${userAnswers.topic}`,
-            resources: [
-              {
-                title: `Intermediate ${userAnswers.topic}`,
-                type: 'tutorial',
-                description: `Advance your understanding of ${userAnswers.topic}`,
-                timeEstimate: '60 min'
-              }
-            ]
+            role: "user",
+            content: `Create a personalized learning roadmap for ${userAnswers.topic}.
+            
+            About me:
+            - Existing knowledge: ${userAnswers.existingKnowledge}
+            - Background level: ${userAnswers.background}
+            - Learning pace: ${userAnswers.pace}
+            - Preferred content format: ${userAnswers.contentPreference}
+            - Available time: ${userAnswers.availableTime}
+            - Learning goal: ${userAnswers.goal}
+            
+            Provide a logical progression of learning steps that will take me from my current knowledge to my goal.`
           }
-        ]
-      };
-      console.log('Using fallback roadmap structure instead');
-    }
-    
-    // Step 2: Enhance the roadmap with real resources using Google Search
-    console.log('Step 2: Enhancing roadmap with real resources...');
-    
-    // Define interfaces for our data structures
-    interface Resource {
-      id: string;
-      title: string;
-      type: string;
-      link: string;
-      timeEstimate: string;
-      source: string;
-      description: string;
-      completed: boolean;
-    }
-    
-    interface Step {
-      id: string;
-      stepNumber: number;
-      title: string;
-      description: string;
-      resources: Resource[];
-      completed: boolean;
-      timeEstimate: string;
-    }
-    
-    const enhancedSteps: Step[] = [];
-    
-    // Process each step sequentially
-    for (let i = 0; i < roadmapStructure.steps.length; i++) {
-      console.log(`Processing step ${i+1}/${roadmapStructure.steps.length}`);
-      const step = roadmapStructure.steps[i];
-      const enhancedResources: Resource[] = [];
+        ],
+        response_format: { type: "json_object" }
+      });
+
+      // Get the content from the response
+      const content = completion.choices[0].message.content;
+      console.log('Roadmap structure generated successfully');
+      console.log('Raw content received:', typeof content, content ? content.substring(0, 50) + '...' : 'null');
       
-      // Process each resource
-      for (let j = 0; j < step.resources.length; j++) {
-        const resource = step.resources[j];
-        console.log(`Processing resource ${j+1}/${step.resources.length}: ${resource.title}`);
-        
-        // Validate resource type to match frontend expectations
-        // IMPORTANT: Must match the ResourceType in the frontend
-        const validTypes = ['video', 'article', 'interactive', 'pdf', 'podcast', 'thread'];
-        const type = validTypes.includes(resource.type?.toLowerCase()) 
-          ? resource.type.toLowerCase() 
-          : (userAnswers.contentPreference && validTypes.includes(userAnswers.contentPreference) 
-              ? userAnswers.contentPreference 
-              : 'article');
-        
-        // Create a detailed search query based on the topic and resource
-        const searchQuery = `${userAnswers.topic} ${resource.title} ${resource.description || ''}`;
-        
-        try {
-          // Wait for the search result
-          const searchResult = await searchResource(searchQuery, type);
-          
-          // Check if the result has a valid link (not example.com)
-          let finalLink = searchResult.link;
-          
-          // If link contains example.com or is empty, use our backup strategy
-          if (!finalLink || finalLink.includes('example.com')) {
-            console.log('Search returned invalid link, using direct platform URL');
-            finalLink = getRealResourceURL(resource.title, type);
-          }
-          
-          // Combine the original resource info with the search result
-          enhancedResources.push({
-            id: uuidv4(),
-            title: resource.title || searchResult.title,
-            type: type,
-            link: finalLink,
-            timeEstimate: resource.timeEstimate || resource.time || '30 min',
-            source: searchResult.source,
-            description: resource.description || '',
-            completed: false
-          });
-        } catch (e) {
-          console.error(`Error processing resource ${j+1}:`, e);
-          
-          // Add a fallback resource if search fails
-          enhancedResources.push({
-            id: uuidv4(),
-            title: resource.title,
-            type: type,
-            link: getRealResourceURL(resource.title, type),
-            timeEstimate: resource.timeEstimate || resource.time || '30 min',
-            source: 'Recommended Platform',
-            description: resource.description || '',
-            completed: false
-          });
+      // Parse the roadmap structure
+      let roadmapStructure;
+      try {
+        // First, ensure content is a valid string
+        if (!content || typeof content !== 'string') {
+          throw new Error('OpenAI returned empty or invalid content');
         }
+        
+        // Try our custom JSON extractor which works even with malformed input
+        roadmapStructure = extractJSONFromString(content);
+        
+        // Verify structure has steps
+        if (!roadmapStructure.steps || !Array.isArray(roadmapStructure.steps)) {
+          throw new Error('Invalid roadmap structure: missing steps array');
+        }
+        
+        console.log(`Parsed roadmap with ${roadmapStructure.steps.length} steps`);
+      } catch (e) {
+        console.error('Error parsing JSON from response:', e);
+        console.error('Raw content causing error:', content);
+        
+        // Provide a fallback structure
+        roadmapStructure = {
+          steps: [
+            {
+              title: `Learning ${userAnswers.topic} - Step 1`,
+              description: `Getting started with ${userAnswers.topic}`,
+              resources: [
+                {
+                  title: `Introduction to ${userAnswers.topic}`,
+                  type: userAnswers.contentPreference || 'article',
+                  description: `Learn the basics of ${userAnswers.topic}`,
+                  timeEstimate: '30 min'
+                },
+                {
+                  title: `${userAnswers.topic} fundamentals`,
+                  type: 'video',
+                  description: `Core concepts of ${userAnswers.topic}`,
+                  timeEstimate: '45 min'
+                }
+              ]
+            },
+            {
+              title: `Learning ${userAnswers.topic} - Step 2`,
+              description: `Building on your knowledge of ${userAnswers.topic}`,
+              resources: [
+                {
+                  title: `Intermediate ${userAnswers.topic}`,
+                  type: 'article',
+                  description: `Advance your understanding of ${userAnswers.topic}`,
+                  timeEstimate: '60 min'
+                }
+              ]
+            }
+          ]
+        };
+        console.log('Using fallback roadmap structure instead');
       }
       
-      // Calculate total time estimate for the step
-      const totalMinutes = enhancedResources.reduce((total, resource) => {
-        const timeString = resource.timeEstimate;
-        const minutes = parseInt(timeString.match(/\d+/)?.[0] || '30');
-        return total + minutes;
-      }, 0);
+      // Step 2: Enhance the roadmap with real resources using Google Search
+      console.log('Step 2: Enhancing roadmap with real resources...');
       
-      // Add the enhanced step
-      enhancedSteps.push({
-        id: uuidv4(),
-        stepNumber: i + 1,
-        title: step.title,
-        description: step.description,
-        resources: enhancedResources,
-        completed: false,
-        timeEstimate: `${totalMinutes} min`
+      // Define interfaces for our data structures
+      interface Resource {
+        id: string;
+        title: string;
+        type: string;
+        link: string;
+        timeEstimate: string;
+        source: string;
+        description: string;
+        completed: boolean;
+      }
+      
+      interface Step {
+        id: string;
+        stepNumber: number;
+        title: string;
+        description: string;
+        resources: Resource[];
+        completed: boolean;
+        timeEstimate: string;
+      }
+      
+      const enhancedSteps: Step[] = [];
+      
+      // Process each step sequentially
+      for (let i = 0; i < roadmapStructure.steps.length; i++) {
+        console.log(`Processing step ${i+1}/${roadmapStructure.steps.length}`);
+        const step = roadmapStructure.steps[i];
+        const enhancedResources: Resource[] = [];
+        
+        // Process each resource
+        for (let j = 0; j < step.resources.length; j++) {
+          const resource = step.resources[j];
+          console.log(`Processing resource ${j+1}/${step.resources.length}: ${resource.title}`);
+          
+          // Validate resource type to match frontend expectations
+          // IMPORTANT: Must match the ResourceType in the frontend
+          const validTypes = ['video', 'article', 'interactive', 'pdf', 'podcast', 'thread'];
+          const type = validTypes.includes(resource.type?.toLowerCase()) 
+            ? resource.type.toLowerCase() 
+            : (userAnswers.contentPreference && validTypes.includes(userAnswers.contentPreference) 
+                ? userAnswers.contentPreference 
+                : 'article');
+          
+          // Create a detailed search query based on the topic and resource
+          const searchQuery = `${userAnswers.topic} ${resource.title} ${resource.description || ''}`;
+          
+          try {
+            // Wait for the search result
+            const searchResult = await searchResource(searchQuery, type);
+            
+            // Check if the result has a valid link (not example.com)
+            let finalLink = searchResult.link;
+            
+            // If link contains example.com or is empty, use our backup strategy
+            if (!finalLink || finalLink.includes('example.com')) {
+              console.log('Search returned invalid link, using direct platform URL');
+              finalLink = getRealResourceURL(resource.title, type);
+            }
+            
+            // Combine the original resource info with the search result
+            enhancedResources.push({
+              id: uuidv4(),
+              title: resource.title || searchResult.title,
+              type: type,
+              link: finalLink,
+              timeEstimate: resource.timeEstimate || resource.time || '30 min',
+              source: searchResult.source,
+              description: resource.description || '',
+              completed: false
+            });
+          } catch (e) {
+            console.error(`Error processing resource ${j+1}:`, e);
+            
+            // Add a fallback resource if search fails
+            enhancedResources.push({
+              id: uuidv4(),
+              title: resource.title,
+              type: type,
+              link: getRealResourceURL(resource.title, type),
+              timeEstimate: resource.timeEstimate || resource.time || '30 min',
+              source: 'Recommended Platform',
+              description: resource.description || '',
+              completed: false
+            });
+          }
+        }
+        
+        // Calculate total time estimate for the step
+        const totalMinutes = enhancedResources.reduce((total, resource) => {
+          const timeString = resource.timeEstimate;
+          const minutes = parseInt(timeString.match(/\d+/)?.[0] || '30');
+          return total + minutes;
+        }, 0);
+        
+        // Add the enhanced step
+        enhancedSteps.push({
+          id: uuidv4(),
+          stepNumber: i + 1,
+          title: step.title,
+          description: step.description,
+          resources: enhancedResources,
+          completed: false,
+          timeEstimate: `${totalMinutes} min`
+        });
+      }
+      
+      console.log('Roadmap generation complete, sending response');
+      return res.status(200).json(enhancedSteps);
+    } catch (openAiError: any) {
+      console.error('OpenAI API Error:', openAiError);
+      console.error('OpenAI error details:', openAiError.message);
+      if (openAiError.response) {
+        console.error('Status:', openAiError.response.status);
+        console.error('Data:', JSON.stringify(openAiError.response.data));
+      }
+      
+      return res.status(500).json({ 
+        error: 'AI processing error', 
+        message: openAiError.message || 'Failed to generate roadmap with AI',
+        detail: process.env.NODE_ENV === 'development' ? openAiError.toString() : undefined
       });
     }
-    
-    console.log('Roadmap generation complete, sending response');
-    return res.status(200).json(enhancedSteps);
   } catch (error: any) {
-    console.error('Error generating roadmap:', error);
+    console.error('Unhandled error in API handler:', error);
     return res.status(500).json({ 
-      error: 'Failed to generate roadmap',
-      message: error.message 
+      error: 'Server error',
+      message: error.message || 'An unknown error occurred', 
+      detail: process.env.NODE_ENV === 'development' ? error.toString() : undefined
     });
   }
 } 
