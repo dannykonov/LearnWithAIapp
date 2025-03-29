@@ -2,11 +2,10 @@
   "name": "vite_react_shadcn_ts",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:vercel": "tsc && vite build && npm run rename-api-files",
+    "build:vercel": "tsc && vite build",
     "rename-api-files": "find ./dist-api -name \"*.js\" -type f -exec bash -c 'mv \"$0\" \"${0%.js}.cjs\"' {} \\;",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
