@@ -1,5 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Define types for our data structures
 export type ResourceType = 'video' | 'article' | 'interactive' | 'pdf' | 'podcast' | 'thread';
@@ -38,6 +38,7 @@ export interface UserAnswers {
 interface RoadmapContextType {
   roadmap: RoadmapStep[];
   userAnswers: UserAnswers;
+  userId: string | null;
   currentStep: number;
   isLoading: boolean;
   progress: number;
@@ -71,6 +72,7 @@ const defaultUserAnswers: UserAnswers = {
 const RoadmapContext = createContext<RoadmapContextType>({
   roadmap: [],
   userAnswers: defaultUserAnswers,
+  userId: null,
   currentStep: 0,
   isLoading: false,
   progress: 0,
@@ -90,8 +92,10 @@ const RoadmapContext = createContext<RoadmapContextType>({
 
 // Create provider component
 export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [roadmap, setRoadmap] = useState<RoadmapStep[]>([]);
+  const { currentUser } = useAuth();
+  const [roadmap, setRoadmapState] = useState<RoadmapStep[]>([]);
   const [userAnswers, setUserAnswers] = useState<UserAnswers>(defaultUserAnswers);
+  const [userId, setUserId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -106,9 +110,27 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     0
   );
 
+  // Effect to clear roadmap and userId on logout
+  useEffect(() => {
+    if (!currentUser) {
+      setRoadmapState([]);
+      setUserAnswers(defaultUserAnswers);
+      setUserId(null);
+      setCurrentStep(0);
+    }
+  }, [currentUser]);
+
+  // Modified setRoadmap to capture userId
+  const setRoadmap = (newRoadmap: RoadmapStep[]) => {
+    setRoadmapState(newRoadmap);
+    if (currentUser) {
+        setUserId(currentUser.uid);
+    }
+  };
+
   // Toggle step completion
   const toggleStepCompleted = (stepId: string) => {
-    setRoadmap(prev => 
+    setRoadmapState(prev => 
       prev.map(step => 
         step.id === stepId 
           ? { 
@@ -127,7 +149,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Toggle resource completion
   const toggleResourceCompleted = (stepId: string, resourceId: string) => {
-    setRoadmap(prev => 
+    setRoadmapState(prev => 
       prev.map(step => 
         step.id === stepId 
           ? { 
@@ -188,7 +210,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       ];
       
-      setRoadmap(prev => [...prev, ...newSteps]);
+      setRoadmapState(prev => [...prev, ...newSteps]);
     } catch (error) {
       console.error('Error generating more steps:', error);
     } finally {
@@ -201,6 +223,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       value={{
         roadmap,
         userAnswers,
+        userId,
         currentStep,
         isLoading,
         progress,

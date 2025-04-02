@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,26 +5,34 @@ import Logo from '@/components/Logo';
 import { ArrowRight, Brain, Lightbulb, GraduationCap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useRoadmap } from '@/contexts/RoadmapContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 const HomePage = () => {
   const [topic, setTopic] = useState('');
   const [isInputFocused, setIsInputFocused] = useState(false);
   const navigate = useNavigate();
   const { setUserAnswers } = useRoadmap();
+  const { currentUser } = useAuth();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (topic.trim()) {
-      setUserAnswers({
-        topic: topic.trim(),
-        existingKnowledge: '',
-        background: '',
-        pace: '',
-        contentPreference: '',
-        availableTime: '',
-        goal: ''
-      });
-      navigate('/questions');
+    const trimmedTopic = topic.trim();
+    if (trimmedTopic) {
+      if (currentUser) {
+        setUserAnswers({
+          topic: trimmedTopic,
+          existingKnowledge: '',
+          background: '',
+          pace: '',
+          contentPreference: '',
+          availableTime: '',
+          goal: ''
+        });
+        navigate('/questions');
+      } else {
+        sessionStorage.setItem('topicBeforeLogin', trimmedTopic);
+        navigate('/login');
+      }
     }
   };
 

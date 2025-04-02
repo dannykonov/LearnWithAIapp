@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,6 +8,9 @@ import HomePage from "@/pages/HomePage";
 import QuestionsPage from "@/pages/QuestionsPage";
 import RoadmapPage from "@/pages/RoadmapPage";
 import NotFound from "@/pages/NotFound";
+import SignUpPage from "@/pages/SignUpPage";
+import LoginPage from "@/pages/LoginPage";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -21,8 +23,12 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/questions" element={<QuestionsPage />} />
-            <Route path="/roadmap" element={<RoadmapPage />} />
+            <Route path="/signup" element={<SignUpPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/questions" element={<QuestionsPage />} />
+              <Route path="/roadmap" element={<RoadmapPage />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

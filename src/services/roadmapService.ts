@@ -6,7 +6,8 @@ export const generateRoadmap = async (userAnswers: UserAnswers): Promise<Roadmap
     console.log('Sending request to API with answers:', JSON.stringify(userAnswers));
     
     // Use the ChatGPT + Google Search enhanced endpoint
-    const response = await fetch('/api/generate-roadmap-with-search', {
+    // Use the local backend server running on port 3001
+    const response = await fetch('http://localhost:3001/api/generate-roadmap-with-search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -1,7 +1,7 @@
 // Simple Express server for local development
 const express = require('express');
 const dotenv = require('dotenv');
-const { createHandler } = require('vercel-community-serverless');
+// const { createHandler } = require('vercel-community-serverless');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
@@ -10,20 +10,23 @@ const path = require('path');
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' })); // Increased size limit for large roadmaps
 
-// Import API routes
-const generateRoadmapHandler = require('./api/generate-roadmap-with-search');
+// Register the TypeScript compiler
+require('ts-node/register');
 
-// Register API routes
+// Define API routes directly with handler function
 app.post('/api/generate-roadmap-with-search', async (req, res) => {
   try {
-    // Call the handler directly
-    await generateRoadmapHandler.default(req, res);
+    // Dynamically import the TypeScript file using the full path
+    const { default: handler } = require('./api/generate-roadmap-with-search.ts');
+    
+    // Call the handler
+    await handler(req, res);
   } catch (error) {
     console.error('Error in API route:', error);
     res.status(500).json({ error: 'Server error', message: error.message });

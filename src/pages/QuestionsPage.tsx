@@ -1,10 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Logo from '@/components/Logo';
 import OnboardingQuestion from '@/components/OnboardingQuestion';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useRoadmap } from '@/contexts/RoadmapContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/firebaseConfig';
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import {
   Select,
   SelectContent,
@@ -21,13 +24,15 @@ import { toast } from '@/components/ui/use-toast';
 
 const QuestionsPage = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading } = useRoadmap();
   const [currentQuestion, setCurrentQuestion] = useState(1);
   
-  // Check if we have a topic, if not redirect to home
-  if (!userAnswers.topic) {
-    navigate('/');
-  }
+  useEffect(() => {
+    if (!currentUser || !userAnswers.topic) {
+      navigate(currentUser ? '/' : '/login');
+    }
+  }, [currentUser, userAnswers.topic, navigate]);
   
   const handleBack = useCallback(() => {
     if (currentQuestion > 1) {
@@ -46,12 +51,20 @@ const QuestionsPage = () => {
   }, [currentQuestion]);
   
   const handleSubmit = async () => {
+    if (!currentUser) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to generate a roadmap.",
+        variant: "destructive",
+      });
+      navigate('/login');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      // Sanitize inputs before submission to ensure they match expected patterns
       const sanitizedAnswers = { 
         ...userAnswers,
-        // Ensure contentPreference is one of the valid types
         contentPreference: (() => {
           const validTypes = ['video', 'article', 'interactive', 'pdf', 'podcast', 'thread'];
           return validTypes.includes(userAnswers.contentPreference) 
@@ -60,20 +73,36 @@ const QuestionsPage = () => {
         })()
       };
       
-      // Use sanitized answers for the API call
       const roadmapData = await generateRoadmap(sanitizedAnswers);
       setRoadmap(roadmapData);
+
+      try {
+        const roadmapDoc = {
+          userId: currentUser.uid,
+          topic: sanitizedAnswers.topic,
+          userAnswers: sanitizedAnswers,
+          steps: roadmapData,
+          createdAt: serverTimestamp(),
+          lastUpdatedAt: serverTimestamp(),
+          progress: 0,
+        };
+        const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
+        toast({
+          title: "Roadmap Generated & Saved",
+          description: `Your personalized learning roadmap for ${userAnswers.topic} is ready!`,
+        });
+      } catch (firestoreError) {
+        console.error('Error saving roadmap to Firestore:', firestoreError);
+        toast({
+          title: "Roadmap Generated (Save Failed)",
+          description: "Your roadmap was generated but failed to save. You can still view it now.",
+        });
+      }
+
       navigate('/roadmap');
-      
-      // Show success toast
-      toast({
-        title: "Roadmap Generated",
-        description: `Your personalized learning roadmap for ${userAnswers.topic} is ready!`,
-      });
     } catch (error: any) {
       console.error('Error generating roadmap:', error);
       
-      // Show error toast with better UX
       toast({
         title: "Error generating roadmap",
         description: error.message || "Something went wrong. Please try again.",
@@ -84,7 +113,6 @@ const QuestionsPage = () => {
     }
   };
   
-  // Check if current question has an answer
   const canProceed = () => {
     switch (currentQuestion) {
       case 1:
@@ -104,7 +132,6 @@ const QuestionsPage = () => {
     }
   };
   
-  // Render the current question
   const renderQuestion = () => {
     switch (currentQuestion) {
       case 1:
