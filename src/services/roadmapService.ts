@@ -1,13 +1,32 @@
 import { UserAnswers, RoadmapStep, ResourceType } from '../contexts/RoadmapContext';
 
+// Determine the appropriate API base URL based on environment
+const getApiBaseUrl = () => {
+  // Force use relative paths in production by checking hostname
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // In development, use the local Node.js server
+    return 'http://localhost:3001';
+  } else {
+    // In production, use relative path (API is hosted on same domain)
+    console.log('Using production API path (relative URL)');
+    return '';
+  }
+};
+
 // Calls the API endpoint to generate a roadmap
 export const generateRoadmap = async (userAnswers: UserAnswers): Promise<RoadmapStep[]> => {
   try {
     console.log('Sending request to API with answers:', JSON.stringify(userAnswers));
     
     // Use the ChatGPT + Google Search enhanced endpoint
-    // Use the local backend server running on port 3001
-    const response = await fetch('http://localhost:3001/api/generate-roadmap-with-search', {
+    // Use environment-aware URL
+    const apiBaseUrl = getApiBaseUrl();
+    const apiUrl = `${apiBaseUrl}/api/generate-roadmap-with-search`;
+    
+    console.log('Calling API at URL:', apiUrl);
+    console.log('Current hostname:', window.location.hostname);
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
