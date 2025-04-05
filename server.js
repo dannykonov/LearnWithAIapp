@@ -396,4 +396,6 @@ app.listen(PORT, () => {
   console.log(`Local API server running at http://localhost:${PORT}`);
   console.log('API endpoints:');
   console.log('- POST /api/generate-roadmap-with-search');
-}); 
+});
+
+// Added empty line to trigger deployment 
