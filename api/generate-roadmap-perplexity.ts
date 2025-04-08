@@ -86,15 +86,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Step 4: Perplexity API Prompt Engineering
   const systemPrompt = `You are an expert curriculum designer specializing in creating concise video-based learning paths.
-Generate a 5-step learning roadmap focused on the topic "${topic}".
-Each step MUST correspond to exactly one specific YouTube video.
-The sequence of videos MUST build upon each other logically.
-Provide a title and a brief description for each step (video).
-Your response MUST be ONLY a valid JSON object. Do not include any text before or after the JSON.
-The JSON object must have a key "steps", which is an array of 5 step objects.
-Each step object must have the following keys: "stepNumber" (integer), "title" (string, the video title), "youtubeUrl" (string, the full YouTube URL), and "description" (string, a brief explanation of the video's content and how it fits the sequence).
+Your ONLY task is to generate a valid JSON object representing a 5-step learning roadmap for the topic "${topic}".
 
-Example format:
+The JSON object MUST follow this EXACT format:
 {
   "steps": [
     {
@@ -103,15 +97,20 @@ Example format:
       "youtubeUrl": "https://www.youtube.com/watch?v=...",
       "description": "Description for video 1."
     },
-    {
-      "stepNumber": 2,
-      "title": "Video Title 2",
-      "youtubeUrl": "https://www.youtube.com/watch?v=...",
-      "description": "Description for video 2, building on video 1."
-    },
-    // ... up to step 5
+    ...more steps...
   ]
-}`;
+}
+
+IMPORTANT REQUIREMENTS:
+1. Each step corresponds to EXACTLY ONE specific YouTube video
+2. The sequence of videos must build upon each other logically
+3. Include REAL YouTube URLs for actual existing videos
+4. Include exactly 5 steps (no more, no less)
+5. Your response MUST be VALID JSON only - no additional text, explanations, or markdown
+6. Do not include comments in the JSON
+7. Make sure the youtubeUrl is a complete and valid YouTube URL
+
+The final response should be ONLY the JSON object, nothing else.`;
 
   try {
     console.log(`Calling Perplexity API (${PERPLEXITY_MODEL}) for topic: ${topic}`);
@@ -151,10 +150,60 @@ Example format:
     try {
       // Attempt to parse the JSON content directly
       perplexityResult = JSON.parse(rawContent);
-      if (!perplexityResult || !Array.isArray(perplexityResult.steps) || perplexityResult.steps.length === 0) {
-         throw new Error('Parsed JSON is not in the expected format or steps array is empty.');
+      
+      // Enhanced parsing logic to handle different response formats
+      if (perplexityResult && Array.isArray(perplexityResult.steps) && perplexityResult.steps.length > 0) {
+        // All good, the format is as expected
+        console.log('Successfully parsed Perplexity JSON response with steps array.');
+      } else if (perplexityResult && Array.isArray(perplexityResult) && perplexityResult.length > 0) {
+        // The response might be a direct array instead of {steps: [...]}
+        console.log('Perplexity returned a direct array instead of a steps object, adapting...');
+        perplexityResult = { steps: perplexityResult };
+      } else {
+        // Try to extract steps from any nested structure
+        console.log('Looking for steps array in nested structure...');
+        let foundSteps: any[] | null = null;
+        
+        // Search for any array property that might contain our data
+        Object.keys(perplexityResult || {}).forEach(key => {
+          if (Array.isArray(perplexityResult[key]) && perplexityResult[key].length > 0) {
+            console.log(`Found potential steps array in property: ${key}`);
+            foundSteps = perplexityResult[key];
+          }
+        });
+        
+        if (foundSteps) {
+          perplexityResult = { steps: foundSteps };
+        } else {
+          // If all else fails, try to construct a basic structure from the response
+          console.log('Attempting to create steps structure from raw response...');
+          
+          // Search for potential YouTube URLs in the text and build a basic structure
+          const youtubeRegex = /(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+/g;
+          const youtubeLinks = rawContent.match(youtubeRegex) || [];
+          
+          if (youtubeLinks.length > 0) {
+            console.log(`Found ${youtubeLinks.length} YouTube links in response, constructing steps...`);
+            perplexityResult = {
+              steps: youtubeLinks.slice(0, 5).map((link, index) => ({
+                stepNumber: index + 1,
+                title: `Video ${index + 1} for ${topic}`,
+                youtubeUrl: link,
+                description: `Part ${index + 1} of learning ${topic}.`
+              }))
+            };
+          } else {
+            throw new Error('Could not find steps array or YouTube links in Perplexity response.');
+          }
+        }
       }
-       console.log('Successfully parsed Perplexity JSON response.');
+      
+      // Final validation
+      if (!perplexityResult || !Array.isArray(perplexityResult.steps) || perplexityResult.steps.length === 0) {
+        throw new Error('Parsed JSON is not in the expected format or steps array is empty.');
+      }
+      
+      console.log('Successfully processed Perplexity response into a valid steps format.');
     } catch (parseError: any) {
       console.error('ERROR: Failed to parse JSON response from Perplexity:', parseError.message);
       console.error('Raw content was:', rawContent);
