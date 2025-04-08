@@ -45,7 +45,6 @@ const SignUpPage: React.FC = () => {
         title: "Account Created",
         description: "You have successfully signed up!",
       });
-      navigate('/'); // Redirect to home page after sign up
     } catch (error: any) {
       console.error("Sign up error:", error);
       let errorMessage = "Failed to create account. Please try again.";

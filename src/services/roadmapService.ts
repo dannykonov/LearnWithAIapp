@@ -1,27 +1,38 @@
 import { UserAnswers, RoadmapStep, ResourceType } from '../contexts/RoadmapContext';
 
+// Add a type for the generation engine choice
+export type GenerationEngine = 'chatgpt' | 'perplexity';
+
 // Determine the appropriate API base URL based on environment
 const getApiBaseUrl = () => {
-  // Force use relative paths in production by checking hostname
+  // For local development, use the dedicated Express API server on port 3001
+  // This is necessary because in this project, Vite (on 8080) doesn't handle API routes itself
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // In development, use the local Node.js server
     return 'http://localhost:3001';
   } else {
-    // In production, use relative path (API is hosted on same domain)
+    // In production, use relative path (API is hosted on same domain via Vercel)
     console.log('Using production API path (relative URL)');
     return '';
   }
 };
 
 // Calls the API endpoint to generate a roadmap
-export const generateRoadmap = async (userAnswers: UserAnswers): Promise<RoadmapStep[]> => {
+// Add 'engine' parameter
+export const generateRoadmap = async (userAnswers: UserAnswers, engine: GenerationEngine = 'chatgpt'): Promise<RoadmapStep[]> => {
   try {
-    console.log('Sending request to API with answers:', JSON.stringify(userAnswers));
+    console.log(`Sending request to API using ${engine} engine with answers:`, JSON.stringify(userAnswers));
     
-    // Use the ChatGPT + Google Search enhanced endpoint
-    // Use environment-aware URL
+    // Determine API endpoint based on the engine choice
     const apiBaseUrl = getApiBaseUrl();
-    const apiUrl = `${apiBaseUrl}/api/generate-roadmap-with-search`;
+    let apiUrl = '';
+    if (engine === 'perplexity') {
+      apiUrl = `${apiBaseUrl}/api/generate-roadmap-perplexity`;
+      // Ensure contentPreference reflects the engine's capability for the request (optional, depends on API)
+      // userAnswers.contentPreference = 'video'; // Example: Force video if using perplexity MVP
+    } else {
+      // Default to ChatGPT + Search
+      apiUrl = `${apiBaseUrl}/api/generate-roadmap-with-search`;
+    }
     
     console.log('Calling API at URL:', apiUrl);
     console.log('Current hostname:', window.location.hostname);
@@ -40,7 +51,23 @@ export const generateRoadmap = async (userAnswers: UserAnswers): Promise<Roadmap
     }
     
     try {
-      const roadmapData: RoadmapStep[] = await response.json();
+      // First get the raw response data, which may have different formats
+      const responseData = await response.json();
+      console.log('API Response received:', responseData);
+      
+      // Extract the roadmap array, which could be the response itself or nested in a roadmap property
+      let roadmapData: RoadmapStep[];
+      
+      if (Array.isArray(responseData)) {
+        // Direct array response (like from generate-roadmap-with-search)
+        roadmapData = responseData;
+      } else if (responseData.roadmap && Array.isArray(responseData.roadmap)) {
+        // Nested structure (like from generate-roadmap-perplexity)
+        roadmapData = responseData.roadmap;
+      } else {
+        console.error('Unknown response format:', responseData);
+        throw new Error('Received invalid roadmap data format');
+      }
       
       // Validate roadmap data before returning
       if (!Array.isArray(roadmapData)) {

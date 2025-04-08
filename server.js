@@ -21,6 +21,7 @@ console.log('API INIT - Environment variables check:');
 console.log('OPENAI_API_KEY present:', !!process.env.OPENAI_API_KEY);
 console.log('GOOGLE_API_KEY present:', !!process.env.GOOGLE_API_KEY);
 console.log('GOOGLE_CSE_ID present:', !!process.env.GOOGLE_CSE_ID);
+console.log('PERPLEXITY_API_KEY present:', !!process.env.PERPLEXITY_API_KEY);
 
 // Initialize OpenAI client using ES module compatible approach
 const openai = new OpenAI({
@@ -391,11 +392,228 @@ app.post('/api/generate-roadmap-with-search', async (req, res) => {
   }
 });
 
+// Add the new Perplexity API endpoint here
+app.post('/api/generate-roadmap-perplexity', async (req, res) => {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+  if (!apiKey) {
+    console.error('ERROR: Missing PERPLEXITY_API_KEY environment variable');
+    return res.status(500).json({
+      error: 'Server configuration error',
+      message: 'Perplexity API key is missing'
+    });
+  }
+
+  let topic;
+  try {
+    // Check if the topic is directly in the request body or inside a userAnswers object
+    // This handles both direct topic property and the format coming from frontend
+    console.log('Request body received:', JSON.stringify(req.body, null, 2));
+    
+    if (req.body.topic) {
+      topic = req.body.topic;
+    } else if (req.body.userAnswers && req.body.userAnswers.topic) {
+      topic = req.body.userAnswers.topic;
+    } else {
+      // Handle the case where the entire object might BE the userAnswers with topic inside
+      const possibleUserAnswers = req.body;
+      if (possibleUserAnswers && possibleUserAnswers.topic) {
+        topic = possibleUserAnswers.topic;
+      } else {
+        throw new Error('Missing topic in request body');
+      }
+    }
+    
+    if (!topic) {
+      throw new Error('Missing topic in request body');
+    }
+    console.log(`Received request for Perplexity roadmap generation for topic: ${topic}`);
+  } catch (e) {
+    console.error('ERROR: Failed to parse request body or missing topic:', e.message);
+    console.error('Request body was:', JSON.stringify(req.body, null, 2));
+    return res.status(400).json({
+      error: 'Invalid request',
+      message: 'Could not parse request body or topic is missing'
+    });
+  }
+
+  // Perplexity API Configuration
+  const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
+  // Use the correct model name from Perplexity documentation
+  const PERPLEXITY_MODEL = 'sonar';  // This is the model shown in their official documentation
+  
+  // Add a few more Perplexity API parameters
+  const PERPLEXITY_API_PARAMS = {
+    temperature: 0.7,
+    max_tokens: 2048,
+  };
+
+  // Perplexity API Prompt Engineering
+  const systemPrompt = `You are an expert curriculum designer specializing in creating concise video-based learning paths.
+Generate a 5-step learning roadmap focused on the topic "${topic}".
+Each step MUST correspond to exactly one specific YouTube video.
+The sequence of videos MUST build upon each other logically.
+Provide a title and a brief description for each step (video).
+Your response MUST be ONLY a valid JSON object. Do not include any text before or after the JSON.
+The JSON object must have a key "steps", which is an array of 5 step objects.
+Each step object must have the following keys: "stepNumber" (integer), "title" (string, the video title), "youtubeUrl" (string, the full YouTube URL), and "description" (string, a brief explanation of the video's content and how it fits the sequence).
+
+Example format:
+{
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "Video Title 1",
+      "youtubeUrl": "https://www.youtube.com/watch?v=...",
+      "description": "Description for video 1."
+    },
+    {
+      "stepNumber": 2,
+      "title": "Video Title 2",
+      "youtubeUrl": "https://www.youtube.com/watch?v=...",
+      "description": "Description for video 2, building on video 1."
+    },
+    // ... up to step 5
+  ]
+}`;
+
+  try {
+    console.log(`Calling Perplexity API (${PERPLEXITY_MODEL}) for topic: ${topic}`);
+    // Call Perplexity API
+    const response = await axios.post(
+      PERPLEXITY_API_URL,
+      {
+        model: PERPLEXITY_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Generate the 5-step YouTube video roadmap for ${topic}` } // User message can be simple
+        ],
+        // Include the additional parameters
+        ...PERPLEXITY_API_PARAMS
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    console.log('Perplexity API call successful.');
+
+    // Process Perplexity Response
+    let perplexityResult;
+    let rawContent = response.data.choices[0]?.message?.content;
+
+    if (!rawContent) {
+        throw new Error('Perplexity API returned an empty response content.');
+    }
+
+    console.log('Raw content from Perplexity:', rawContent);
+
+    try {
+      // Attempt to parse the JSON content directly
+      perplexityResult = JSON.parse(rawContent);
+      if (!perplexityResult || !Array.isArray(perplexityResult.steps) || perplexityResult.steps.length === 0) {
+         throw new Error('Parsed JSON is not in the expected format or steps array is empty.');
+      }
+       console.log('Successfully parsed Perplexity JSON response.');
+    } catch (parseError) {
+      console.error('ERROR: Failed to parse JSON response from Perplexity:', parseError.message);
+      console.error('Raw content was:', rawContent);
+      throw new Error('Perplexity API did not return valid JSON in the expected format.');
+    }
+
+    // Format into Roadmap Structure
+    const formattedSteps = perplexityResult.steps.map((pplxStep, index) => {
+       if (!pplxStep.youtubeUrl || !pplxStep.title || !pplxStep.description) {
+           console.warn(`Warning: Step ${index + 1} from Perplexity is missing required fields (youtubeUrl, title, or description). Skipping fields.`);
+       }
+      const resource = {
+        id: uuidv4(),
+        title: pplxStep.title || `Video Step ${index + 1}`,
+        type: 'video',
+        link: pplxStep.youtubeUrl || '#', // Provide a fallback link if missing
+        timeEstimate: 'N/A', // MVP default
+        source: 'YouTube',
+        description: pplxStep.description || 'No description provided.',
+        completed: false,
+      };
+
+      return {
+        id: uuidv4(),
+        stepNumber: pplxStep.stepNumber || index + 1,
+        title: `Step ${index + 1}: ${resource.title}`, // Use video title for Step title
+        description: resource.description, // Use video description for Step description
+        resources: [resource],
+        completed: false,
+        timeEstimate: resource.timeEstimate, // Use single resource time estimate
+      };
+    });
+
+    // Return Response
+    console.log(`Successfully generated roadmap with ${formattedSteps.length} steps.`);
+    return res.status(200).json({ roadmap: formattedSteps });
+
+  } catch (error) {
+    console.error('Error during Perplexity API call or processing:', error.message);
+    
+    // More detailed error logging
+    console.error('DETAILED ERROR INFO:');
+    console.error('Error object type:', typeof error);
+    console.error('Error name:', error.name);
+    console.error('Error constructor:', error.constructor?.name);
+    console.error('Error stack:', error.stack);
+    
+    // Distinguish between Axios errors (API call failures) and other errors
+    if (axios.isAxiosError(error)) {
+      console.error('AXIOS ERROR DETAILS:');
+      console.error('Request URL:', error.config?.url);
+      console.error('Request method:', error.config?.method);
+      console.error('Request headers:', JSON.stringify(error.config?.headers, null, 2));
+      console.error('Request data:', error.config?.data);
+      
+      if (error.response) {
+        console.error('API Error Status:', error.response.status);
+        console.error('API Error Status Text:', error.response.statusText);
+        console.error('API Error Headers:', JSON.stringify(error.response.headers, null, 2));
+        console.error('API Error Data:', JSON.stringify(error.response.data, null, 2));
+        
+        return res.status(error.response.status || 500).json({
+            error: 'Perplexity API error',
+            message: error.response.data?.message || error.response.data?.error?.message || error.message,
+            details: error.response.data
+        });
+      } else if (error.request) {
+        // Request was made but no response received
+        console.error('No response received from Perplexity API');
+        console.error('Request details:', error.request);
+        
+        return res.status(500).json({
+            error: 'Perplexity API connection error',
+            message: 'No response received from Perplexity API'
+        });
+      }
+    } 
+
+    // For all other types of errors
+    return res.status(500).json({
+        error: 'Internal server error',
+        message: error.message || 'An unexpected error occurred during roadmap generation.'
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Local API server running at http://localhost:${PORT}`);
   console.log('API endpoints:');
   console.log('- POST /api/generate-roadmap-with-search');
+  console.log('- POST /api/generate-roadmap-perplexity');
 });
 
 // Added empty line to trigger deployment 

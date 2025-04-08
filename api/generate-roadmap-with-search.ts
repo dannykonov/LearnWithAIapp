@@ -179,6 +179,9 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
     try {
       userAnswers = req.body;
       console.log('Received user answers for topic:', userAnswers.topic);
+      // ---- START: Add detailed logging for the entire userAnswers object ----
+      console.log('Full user answers received:', JSON.stringify(userAnswers, null, 2)); 
+      // ---- END: Add detailed logging ----
       
       if (!userAnswers || !userAnswers.topic) {
         throw new Error('Invalid request body - missing topic');
@@ -196,25 +199,21 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
     
     // Step 1: Generate the roadmap structure using ChatGPT
     try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo", // Using 3.5 to reduce costs, can use gpt-4 for better quality
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert educational content creator with deep knowledge of learning pathways.
+      // ---- START: Added logic to customize prompt for video preference ----
+      let systemPrompt = `You are an expert educational content creator with deep knowledge of learning pathways.
             Your task is to create a personalized 5-step learning roadmap structure for someone learning ${userAnswers.topic}.
-            
+
             For each step, include:
             1. A clear, descriptive title showing progression through the topic
             2. A detailed description of what the learner should understand by the end of this step
             3. 2-3 specific resource topics (not URLs, just describe what the resource should cover)
-            
+
             For each resource, provide:
             - Title (be specific about what should be learned)
             - Type (ONLY use these exact values: video, article, interactive, pdf, podcast, thread)
             - Brief description of what this resource should cover
             - Approximate time commitment (15min, 30min, 1hr, etc.)
-            
+
             IMPORTANT: Your response MUST be a valid JSON object with a "steps" array like this example:
             {
               "steps": [
@@ -232,8 +231,22 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
                 }
               ]
             }
-            
-            DO NOT include any text before or after the JSON. Your entire response must be valid JSON.`
+
+            DO NOT include any text before or after the JSON. Your entire response must be valid JSON.`;
+
+      if (userAnswers.contentPreference?.toLowerCase() === 'videos') {
+        systemPrompt += `
+
+VERY IMPORTANT: The user strongly prefers video content. Ensure ALL suggested resources are of type 'video' and describe content typically found on YouTube (tutorials, lectures, explanations). DO NOT include any articles, interactive resources, or other non-video content types.`;
+      }
+      // ---- END: Added logic to customize prompt for video preference ----
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo", // Using 3.5 to reduce costs, can use gpt-4 for better quality
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt // Use the potentially modified system prompt
           },
           {
             role: "user",
@@ -317,6 +330,17 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
         console.log('Using fallback roadmap structure instead');
       }
       
+      // IMPORTANT: Force all resources to be videos if user prefers video content
+      if (userAnswers.contentPreference?.toLowerCase() === 'videos') {
+        console.log('User prefers videos - enforcing video-only roadmap');
+        roadmapStructure.steps.forEach((step: any) => {
+          step.resources.forEach((resource: any) => {
+            // Force every resource to be of type video
+            resource.type = 'video';
+          });
+        });
+      }
+      
       // Step 2: Enhance the roadmap with real resources using Google Search
       console.log('Step 2: Enhancing roadmap with real resources...');
       
@@ -343,7 +367,16 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
                 : 'article');
           
           // Create a detailed search query based on the topic and resource
-          const searchQuery = `${userAnswers.topic} ${resource.title} ${resource.description || ''}`;
+          let searchQuery = `${userAnswers.topic} ${resource.title} ${resource.description || ''}`;
+          
+          // Force video preference if selected
+          if (userAnswers.contentPreference?.toLowerCase() === 'videos') {
+            // Ensure we're getting YouTube results only
+            searchQuery = `site:youtube.com ${searchQuery}`;
+            // Force the resource type to be video
+            resource.type = 'video';
+            console.log('Enforcing video-only search with YouTube restriction');
+          }
           
           try {
             // Wait for the search result
@@ -351,21 +384,58 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
             
             // Check if the result has a valid link (not example.com)
             let finalLink = searchResult.link;
+            let finalSource = searchResult.source;
+            
+            // If user prefers videos, ensure all resources are from YouTube
+            if (userAnswers.contentPreference?.toLowerCase() === 'videos') {
+              console.log(`[Video Pref] Checking resource: ${resource.title}, Link: ${finalLink}, Source: ${finalSource}`);
+              // Check if the result is from YouTube (case-insensitive and checking domain)
+              const isYouTube = finalLink && (finalLink.toLowerCase().includes('youtube.com/') || finalLink.toLowerCase().includes('youtu.be/'));
+              
+              if (!isYouTube) {
+                console.log('[Video Pref] Non-YouTube result detected! Performing specific YouTube search.');
+                // Perform a stronger YouTube-specific search
+                const youtubeQuery = `site:youtube.com ${userAnswers.topic} ${resource.title} tutorial`;
+                const youtubeResult = await searchResource(youtubeQuery, 'video');
+                
+                // Use the YouTube result instead, if valid
+                const isYouTubeResultValid = youtubeResult.link && (youtubeResult.link.toLowerCase().includes('youtube.com/') || youtubeResult.link.toLowerCase().includes('youtu.be/'));
+                if (isYouTubeResultValid) {
+                  console.log(`[Video Pref] Found valid YouTube alternative: ${youtubeResult.link}`);
+                  finalLink = youtubeResult.link;
+                  finalSource = youtubeResult.source || 'YouTube';
+                } else {
+                  // Fallback to a direct YouTube search if specific search fails
+                  console.log('[Video Pref] Specific YouTube search failed or invalid. Falling back to direct YouTube search URL.');
+                  finalLink = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${userAnswers.topic} ${resource.title}`)}`;
+                  finalSource = 'YouTube';
+                }
+              } else {
+                 console.log('[Video Pref] Resource confirmed as YouTube.');
+              }
+            }
             
             // If link contains example.com or is empty, use our backup strategy
             if (!finalLink || finalLink.includes('example.com')) {
               console.log('Search returned invalid link, using direct platform URL');
-              finalLink = getRealResourceURL(resource.title, type);
+              
+              // For video preference, always default to YouTube
+              if (userAnswers.contentPreference?.toLowerCase() === 'videos') {
+                finalLink = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${userAnswers.topic} ${resource.title}`)}`;
+                finalSource = 'YouTube';
+              } else {
+                finalLink = getRealResourceURL(resource.title, type);
+              }
             }
             
             // Combine the original resource info with the search result
             enhancedResources.push({
               id: uuidv4(),
               title: resource.title || searchResult.title,
-              type: type,
+              type: userAnswers.contentPreference?.toLowerCase() === 'videos' ? 'video' : type,
               link: finalLink,
               timeEstimate: resource.timeEstimate || resource.time || '30 min',
-              source: searchResult.source,
+              source: finalSource,
               description: resource.description || '',
               completed: false
             });
@@ -403,6 +473,28 @@ const handler = async (req: VercelRequest, res: VercelResponse) => {
           completed: false,
           timeEstimate: `${totalMinutes} min`
         });
+      }
+      
+      // Final verification for video preference to ensure all resources are YouTube videos
+      if (userAnswers.contentPreference?.toLowerCase() === 'videos') {
+        console.log('[Video Pref - Final Check] Verifying all resources are YouTube videos...');
+        enhancedSteps.forEach(step => {
+          step.resources.forEach(resource => {
+            // Force type to be video
+            resource.type = 'video';
+            
+            const isYouTubeFinal = resource.link && (resource.link.toLowerCase().includes('youtube.com/') || resource.link.toLowerCase().includes('youtu.be/'));
+            
+            // If not from YouTube, replace with YouTube search
+            if (!isYouTubeFinal) {
+              console.log(`[Video Pref - Final Check] Replacing non-YouTube resource: Title: ${resource.title}, Original Link: ${resource.link}`);
+              resource.link = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${userAnswers.topic} ${resource.title}`)}`;
+              resource.source = 'YouTube';
+              console.log(`[Video Pref - Final Check] Replaced with: ${resource.link}`);
+            }
+          });
+        });
+        console.log('[Video Pref - Final Check] Verification complete.');
       }
       
       console.log('Roadmap generation complete, sending response');

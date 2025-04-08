@@ -19,7 +19,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from 'lucide-react';
-import { generateRoadmap } from '@/services/roadmapService';
+import { generateRoadmap, GenerationEngine } from '@/services/roadmapService';
 import { toast } from '@/components/ui/use-toast';
 
 const QuestionsPage = () => {
@@ -27,6 +27,7 @@ const QuestionsPage = () => {
   const { currentUser } = useAuth();
   const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading } = useRoadmap();
   const [currentQuestion, setCurrentQuestion] = useState(1);
+  const [selectedEngine, setSelectedEngine] = useState<GenerationEngine>('chatgpt');
   
   useEffect(() => {
     if (!currentUser || !userAnswers.topic) {
@@ -34,23 +35,7 @@ const QuestionsPage = () => {
     }
   }, [currentUser, userAnswers.topic, navigate]);
   
-  const handleBack = useCallback(() => {
-    if (currentQuestion > 1) {
-      setCurrentQuestion(prev => prev - 1);
-    } else {
-      navigate('/');
-    }
-  }, [currentQuestion, navigate]);
-  
-  const handleNext = useCallback(() => {
-    if (currentQuestion < 6) {
-      setCurrentQuestion(prev => prev + 1);
-    } else {
-      handleSubmit();
-    }
-  }, [currentQuestion]);
-  
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!currentUser) {
       toast({
         title: "Authentication Required",
@@ -73,7 +58,8 @@ const QuestionsPage = () => {
         })()
       };
       
-      const roadmapData = await generateRoadmap(sanitizedAnswers);
+      console.log('Submitting with engine:', selectedEngine);
+      const roadmapData = await generateRoadmap(sanitizedAnswers, selectedEngine);
       setRoadmap(roadmapData);
 
       try {
@@ -111,7 +97,23 @@ const QuestionsPage = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentUser, userAnswers, selectedEngine, setIsLoading, setRoadmap, navigate]);
+  
+  const handleBack = useCallback(() => {
+    if (currentQuestion > 1) {
+      setCurrentQuestion(prev => prev - 1);
+    } else {
+      navigate('/');
+    }
+  }, [currentQuestion, navigate]);
+  
+  const handleNext = useCallback(() => {
+    if (currentQuestion < 7) {
+      setCurrentQuestion(prev => prev + 1);
+    } else {
+      handleSubmit();
+    }
+  }, [currentQuestion, handleSubmit]);
   
   const canProceed = () => {
     switch (currentQuestion) {
@@ -127,12 +129,16 @@ const QuestionsPage = () => {
         return !!userAnswers.availableTime;
       case 6:
         return !!userAnswers.goal;
+      case 7:
+        return true;
       default:
         return false;
     }
   };
   
   const renderQuestion = () => {
+    const totalQuestions = 7;
+    
     switch (currentQuestion) {
       case 1:
         return (
@@ -140,7 +146,7 @@ const QuestionsPage = () => {
             title={`What do you already know about ${userAnswers.topic}?`}
             description="This helps us avoid covering material you already understand."
             questionNumber={1}
-            totalQuestions={6}
+            totalQuestions={totalQuestions}
             onBack={handleBack}
             onNext={handleNext}
             canProceed={canProceed()}
@@ -163,7 +169,7 @@ const QuestionsPage = () => {
             title="What's your background or experience level?"
             description="Tell us about your general experience level and background."
             questionNumber={2}
-            totalQuestions={6}
+            totalQuestions={totalQuestions}
             onBack={handleBack}
             onNext={handleNext}
             canProceed={canProceed()}
@@ -195,7 +201,7 @@ const QuestionsPage = () => {
             title="How fast do you want to learn?"
             description="Choose the learning pace that works best for you."
             questionNumber={3}
-            totalQuestions={6}
+            totalQuestions={totalQuestions}
             onBack={handleBack}
             onNext={handleNext}
             canProceed={canProceed()}
@@ -236,7 +242,7 @@ const QuestionsPage = () => {
             title="How do you prefer to learn?"
             description="Select your preferred learning format(s)."
             questionNumber={4}
-            totalQuestions={6}
+            totalQuestions={totalQuestions}
             onBack={handleBack}
             onNext={handleNext}
             canProceed={canProceed()}
@@ -283,7 +289,7 @@ const QuestionsPage = () => {
             title="How much time can you dedicate weekly?"
             description="This helps us create a roadmap that fits your schedule."
             questionNumber={5}
-            totalQuestions={6}
+            totalQuestions={totalQuestions}
             onBack={handleBack}
             onNext={handleNext}
             canProceed={canProceed()}
@@ -314,7 +320,7 @@ const QuestionsPage = () => {
             title="What's your learning goal?"
             description={`Why do you want to learn ${userAnswers.topic}?`}
             questionNumber={6}
-            totalQuestions={6}
+            totalQuestions={totalQuestions}
             onBack={handleBack}
             onNext={handleNext}
             canProceed={canProceed()}
@@ -328,6 +334,40 @@ const QuestionsPage = () => {
                 goal: e.target.value
               })}
             />
+          </OnboardingQuestion>
+        );
+        
+      case 7:
+        return (
+          <OnboardingQuestion
+            title="Choose Generation Engine"
+            description="Select the AI engine to generate your roadmap. Perplexity currently focuses only on YouTube videos."
+            questionNumber={totalQuestions}
+            totalQuestions={totalQuestions}
+            onBack={handleBack}
+            onNext={handleSubmit}
+            canProceed={canProceed()}
+          >
+            <RadioGroup
+              value={selectedEngine}
+              onValueChange={(value) => setSelectedEngine(value as GenerationEngine)}
+              className="grid gap-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="chatgpt" id="chatgpt" />
+                <Label htmlFor="chatgpt" className="font-normal text-base">
+                  Standard (ChatGPT + Search)
+                </Label>
+                <p className="text-sm text-muted-foreground ml-8">Generates diverse resources based on your preferences.</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="perplexity" id="perplexity" />
+                <Label htmlFor="perplexity" className="font-normal text-base">
+                  Perplexity (YouTube Videos Only - MVP)
+                </Label>
+                 <p className="text-sm text-muted-foreground ml-8">Generates a 5-step roadmap using only YouTube videos.</p>
+              </div>
+            </RadioGroup>
           </OnboardingQuestion>
         );
         
