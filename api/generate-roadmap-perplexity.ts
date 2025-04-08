@@ -30,7 +30,13 @@ interface Step {
 
 // Perplexity API Configuration (Verify endpoint and model with documentation)
 const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
-const PERPLEXITY_MODEL = 'pplx-7b-online'; // Or 'pplx-70b-online', etc.
+const PERPLEXITY_MODEL = 'sonar'; // Using the correct model name from their documentation
+
+// Add additional API parameters
+const PERPLEXITY_API_PARAMS = {
+  temperature: 0.7,
+  max_tokens: 2048,
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -48,13 +54,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let topic: string;
   try {
-    topic = req.body.topic;
+    // Check if the topic is directly in the request body or inside a userAnswers object
+    console.log('Request body received:', JSON.stringify(req.body, null, 2));
+    
+    if (req.body.topic) {
+      topic = req.body.topic;
+    } else if (req.body.userAnswers && req.body.userAnswers.topic) {
+      topic = req.body.userAnswers.topic;
+    } else {
+      // Handle the case where the entire object might BE the userAnswers with topic inside
+      const possibleUserAnswers = req.body;
+      if (possibleUserAnswers && possibleUserAnswers.topic) {
+        topic = possibleUserAnswers.topic;
+      } else {
+        throw new Error('Missing topic in request body');
+      }
+    }
+    
     if (!topic) {
       throw new Error('Missing topic in request body');
     }
     console.log(`Received request for Perplexity roadmap generation for topic: ${topic}`);
   } catch (e: any) {
     console.error('ERROR: Failed to parse request body or missing topic:', e.message);
+    console.error('Request body was:', JSON.stringify(req.body, null, 2));
     return res.status(400).json({
       error: 'Invalid request',
       message: 'Could not parse request body or topic is missing'
@@ -101,7 +124,8 @@ Example format:
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Generate the 5-step YouTube video roadmap for ${topic}` } // User message can be simple
         ],
-        // Optional parameters (temperature, max_tokens, etc.) can be added here if needed
+        // Include the additional parameters
+        ...PERPLEXITY_API_PARAMS
       },
       {
         headers: {
