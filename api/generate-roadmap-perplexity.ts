@@ -85,32 +85,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Step 4: Perplexity API Prompt Engineering
-  const systemPrompt = `You are an expert curriculum designer specializing in creating concise video-based learning paths.
-Your ONLY task is to generate a valid JSON object representing a 5-step learning roadmap for the topic "${topic}".
+  const systemPrompt = `You are an expert curriculum designer creating a video learning path.
+For the topic "${topic}", recommend exactly 5 YouTube videos that build upon each other in a logical sequence for a beginner to learn this topic.
 
-The JSON object MUST follow this EXACT format:
-{
-  "steps": [
-    {
-      "stepNumber": 1,
-      "title": "Video Title 1",
-      "youtubeUrl": "https://www.youtube.com/watch?v=...",
-      "description": "Description for video 1."
-    },
-    ...more steps...
-  ]
-}
+Just list the videos with:
+1. A brief title/description
+2. The FULL YouTube URL (must be a valid YouTube link)
 
-IMPORTANT REQUIREMENTS:
-1. Each step corresponds to EXACTLY ONE specific YouTube video
-2. The sequence of videos must build upon each other logically
-3. Include REAL YouTube URLs for actual existing videos
-4. Include exactly 5 steps (no more, no less)
-5. Your response MUST be VALID JSON only - no additional text, explanations, or markdown
-6. Do not include comments in the JSON
-7. Make sure the youtubeUrl is a complete and valid YouTube URL
-
-The final response should be ONLY the JSON object, nothing else.`;
+No need for JSON formatting or additional explanations. Just provide 5 YouTube videos with their titles and URLs.`;
 
   try {
     console.log(`Calling Perplexity API (${PERPLEXITY_MODEL}) for topic: ${topic}`);
@@ -121,7 +103,7 @@ The final response should be ONLY the JSON object, nothing else.`;
         model: PERPLEXITY_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Generate the 5-step YouTube video roadmap for ${topic}` } // User message can be simple
+          { role: 'user', content: `Give me 5 YouTube videos to learn ${topic}, with full URLs. Just the titles and links, no explanations.` }
         ],
         // Include the additional parameters
         ...PERPLEXITY_API_PARAMS
@@ -138,7 +120,6 @@ The final response should be ONLY the JSON object, nothing else.`;
     console.log('Perplexity API call successful.');
 
     // Step 6: Process Perplexity Response
-    let perplexityResult;
     let rawContent = response.data.choices[0]?.message?.content;
 
     if (!rawContent) {
@@ -147,103 +128,83 @@ The final response should be ONLY the JSON object, nothing else.`;
 
     console.log('Raw content from Perplexity:', rawContent);
 
+    // Parse text response to extract YouTube links
     try {
-      // Attempt to parse the JSON content directly
-      perplexityResult = JSON.parse(rawContent);
-      
-      // Enhanced parsing logic to handle different response formats
-      if (perplexityResult && Array.isArray(perplexityResult.steps) && perplexityResult.steps.length > 0) {
-        // All good, the format is as expected
-        console.log('Successfully parsed Perplexity JSON response with steps array.');
-      } else if (perplexityResult && Array.isArray(perplexityResult) && perplexityResult.length > 0) {
-        // The response might be a direct array instead of {steps: [...]}
-        console.log('Perplexity returned a direct array instead of a steps object, adapting...');
-        perplexityResult = { steps: perplexityResult };
-      } else {
-        // Try to extract steps from any nested structure
-        console.log('Looking for steps array in nested structure...');
-        let foundSteps: any[] | null = null;
-        
-        // Search for any array property that might contain our data
-        Object.keys(perplexityResult || {}).forEach(key => {
-          if (Array.isArray(perplexityResult[key]) && perplexityResult[key].length > 0) {
-            console.log(`Found potential steps array in property: ${key}`);
-            foundSteps = perplexityResult[key];
-          }
-        });
-        
-        if (foundSteps) {
-          perplexityResult = { steps: foundSteps };
-        } else {
-          // If all else fails, try to construct a basic structure from the response
-          console.log('Attempting to create steps structure from raw response...');
-          
-          // Search for potential YouTube URLs in the text and build a basic structure
-          const youtubeRegex = /(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+/g;
-          const youtubeLinks = rawContent.match(youtubeRegex) || [];
-          
-          if (youtubeLinks.length > 0) {
-            console.log(`Found ${youtubeLinks.length} YouTube links in response, constructing steps...`);
-            perplexityResult = {
-              steps: youtubeLinks.slice(0, 5).map((link, index) => ({
-                stepNumber: index + 1,
-                title: `Video ${index + 1} for ${topic}`,
-                youtubeUrl: link,
-                description: `Part ${index + 1} of learning ${topic}.`
-              }))
-            };
-          } else {
-            throw new Error('Could not find steps array or YouTube links in Perplexity response.');
-          }
-        }
+      // Regular expression to match YouTube URLs
+      const youtubeRegex = /(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/[^\s"']+/g;
+      const youtubeLinks: string[] = [];
+      let urlMatch;
+      while ((urlMatch = youtubeRegex.exec(rawContent)) !== null) {
+        youtubeLinks.push(urlMatch[0]);
       }
       
-      // Final validation
-      if (!perplexityResult || !Array.isArray(perplexityResult.steps) || perplexityResult.steps.length === 0) {
-        throw new Error('Parsed JSON is not in the expected format or steps array is empty.');
+      if (youtubeLinks.length === 0) {
+        console.error('No YouTube links found in the response content');
+        throw new Error('No YouTube links found in the Perplexity response.');
       }
       
-      console.log('Successfully processed Perplexity response into a valid steps format.');
+      console.log(`Found ${youtubeLinks.length} YouTube links in the response`);
+      
+      // Regular expression to match numbered items with titles
+      const titleRegex = /\d+\.\s+([^\n]+)(?=https?|$)/g;
+      const titles: string[] = [];
+      let match;
+      while ((match = titleRegex.exec(rawContent)) !== null) {
+        titles.push(match[1].trim());
+      }
+      
+      console.log(`Found ${titles.length} titles in the response`);
+      
+      // If we didn't find enough titles, generate some based on the topic
+      while (titles.length < youtubeLinks.length) {
+        titles.push(`${topic} - Video ${titles.length + 1}`);
+      }
+      
+      // Build our steps array (up to 5 videos)
+      const steps = youtubeLinks.slice(0, 5).map((link, index) => {
+        return {
+          stepNumber: index + 1,
+          title: titles[index] || `${topic} - Video ${index + 1}`,
+          youtubeUrl: link,
+          description: `Part ${index + 1} of the learning sequence for ${topic}.`
+        };
+      });
+      
+      // Create our final perplexityResult object
+      const perplexityResult = { steps };
+      
+      // Step 7: Format into Roadmap Structure
+      const formattedSteps: Step[] = perplexityResult.steps.map((pplxStep: any, index: number): Step => {
+        const resource: Resource = {
+          id: uuidv4(),
+          title: pplxStep.title || `Video Step ${index + 1}`,
+          type: 'video',
+          link: pplxStep.youtubeUrl || '#',
+          timeEstimate: 'N/A', // MVP default
+          source: 'YouTube',
+          description: pplxStep.description || 'No description provided.',
+          completed: false,
+        };
+
+        return {
+          id: uuidv4(),
+          stepNumber: pplxStep.stepNumber || index + 1,
+          title: `Step ${index + 1}: ${resource.title}`,
+          description: resource.description,
+          resources: [resource],
+          completed: false,
+          timeEstimate: resource.timeEstimate,
+        };
+      });
+
+      console.log(`Successfully generated roadmap with ${formattedSteps.length} steps.`);
+      return res.status(200).json({ roadmap: formattedSteps });
+      
     } catch (parseError: any) {
-      console.error('ERROR: Failed to parse JSON response from Perplexity:', parseError.message);
+      console.error('ERROR: Failed to extract YouTube links from Perplexity response:', parseError.message);
       console.error('Raw content was:', rawContent);
-       // Optional: Implement more robust JSON extraction if needed, similar to the other generator
-      throw new Error('Perplexity API did not return valid JSON in the expected format.');
+      throw new Error('Failed to extract YouTube links from Perplexity response.');
     }
-
-    // Step 7: Format into Roadmap Structure
-    const formattedSteps: Step[] = perplexityResult.steps.map((pplxStep: any, index: number): Step => {
-       if (!pplxStep.youtubeUrl || !pplxStep.title || !pplxStep.description) {
-           console.warn(`Warning: Step ${index + 1} from Perplexity is missing required fields (youtubeUrl, title, or description). Skipping fields.`);
-       }
-      const resource: Resource = {
-        id: uuidv4(),
-        title: pplxStep.title || `Video Step ${index + 1}`,
-        type: 'video',
-        link: pplxStep.youtubeUrl || '#', // Provide a fallback link if missing
-        timeEstimate: 'N/A', // MVP default
-        source: 'YouTube',
-        description: pplxStep.description || 'No description provided.',
-        completed: false,
-      };
-
-      return {
-        id: uuidv4(),
-        stepNumber: pplxStep.stepNumber || index + 1,
-        title: `Step ${index + 1}: ${resource.title}`, // Use video title for Step title
-        description: resource.description, // Use video description for Step description
-        resources: [resource],
-        completed: false,
-        timeEstimate: resource.timeEstimate, // Use single resource time estimate
-      };
-    });
-
-     // Ensure we always return 5 steps, even if PPLX returns fewer/more? For MVP, we trust PPLX gives 5.
-     // You might add logic here to truncate or pad if needed.
-
-    // Step 8: Return Response
-    console.log(`Successfully generated roadmap with ${formattedSteps.length} steps.`);
-    return res.status(200).json({ roadmap: formattedSteps });
 
   } catch (error: any) {
     console.error('Error during Perplexity API call or processing:', error.message);
