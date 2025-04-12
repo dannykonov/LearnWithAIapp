@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +24,26 @@ const OnboardingQuestion: React.FC<OnboardingQuestionProps> = ({
   onNext,
   canProceed = true,
 }) => {
+  // Add keyboard event listener for Command+Enter
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if Command (Meta) key and Enter are pressed
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        if (onNext && canProceed) {
+          onNext();
+        }
+      }
+    };
+    
+    // Add event listener
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Clean up event listener
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onNext, canProceed]);
+
   return (
     <div className="animate-scale-in">
       <Card className="max-w-lg mx-auto">

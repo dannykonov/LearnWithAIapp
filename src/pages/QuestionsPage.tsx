@@ -116,6 +116,11 @@ const QuestionsPage = () => {
   }, [currentQuestion, handleSubmit]);
   
   const canProceed = () => {
+    // Always return true to allow empty inputs and proceed with Command+Enter
+    return true;
+    
+    // Original implementation (commented out for reference)
+    /*
     switch (currentQuestion) {
       case 1:
         return !!userAnswers.existingKnowledge;
@@ -134,6 +139,7 @@ const QuestionsPage = () => {
       default:
         return false;
     }
+    */
   };
   
   const renderQuestion = () => {
