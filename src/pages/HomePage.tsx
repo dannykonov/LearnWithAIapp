@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import Logo from '@/components/Logo';
 import { ArrowRight, Brain, Lightbulb, GraduationCap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useRoadmap } from '@/contexts/RoadmapContext';
@@ -39,11 +38,7 @@ const HomePage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100">
       <div className="container px-4 py-8 mx-auto">
-        <header className="mb-12 flex justify-center">
-          <Logo size="lg" />
-        </header>
-
-        <main className="max-w-4xl mx-auto text-center">
+        <main className="max-w-4xl mx-auto text-center pt-8">
           <h1 className="text-4xl md:text-5xl font-bold text-lwai-deepBlue mb-6">
             Learn anything with the help of AI
           </h1>

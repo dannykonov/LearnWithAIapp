@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -14,7 +13,7 @@ import {
   GraduationCap,
   Flag
 } from 'lucide-react';
-import { useRoadmap } from '../contexts/RoadmapContext';
+import { useRoadmap } from '@/contexts/RoadmapContext';
 import { cn } from '@/lib/utils';
 
 const ProgressTracker = () => {

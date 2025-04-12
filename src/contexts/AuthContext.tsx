@@ -1,15 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from '../firebaseConfig'; // Import your Firebase auth instance
 
 // Define the shape of the context data
 interface AuthContextType {
   currentUser: User | null;
   loading: boolean;
+  logout: () => Promise<void>;
 }
 
 // Create the context with a default value
-const AuthContext = createContext<AuthContextType>({ currentUser: null, loading: true });
+const AuthContext = createContext<AuthContextType>({ 
+  currentUser: null, 
+  loading: true,
+  logout: async () => {},
+});
 
 // Custom hook to use the AuthContext
 export function useAuth() {
@@ -25,6 +30,11 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); // Start loading until auth state is confirmed
+
+  // Function to logout user
+  const logout = async () => {
+    return signOut(auth);
+  };
 
   useEffect(() => {
     // Subscribe to auth state changes
@@ -42,6 +52,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value = {
     currentUser,
     loading,
+    logout,
   };
 
   // Render children only when not loading, or handle loading state as needed

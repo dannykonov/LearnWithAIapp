@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Logo from '@/components/Logo';
 import OnboardingQuestion from '@/components/OnboardingQuestion';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -118,28 +117,6 @@ const QuestionsPage = () => {
   const canProceed = () => {
     // Always return true to allow empty inputs and proceed with Command+Enter
     return true;
-    
-    // Original implementation (commented out for reference)
-    /*
-    switch (currentQuestion) {
-      case 1:
-        return !!userAnswers.existingKnowledge;
-      case 2:
-        return !!userAnswers.background;
-      case 3:
-        return !!userAnswers.pace;
-      case 4:
-        return !!userAnswers.contentPreference;
-      case 5:
-        return !!userAnswers.availableTime;
-      case 6:
-        return !!userAnswers.goal;
-      case 7:
-        return true;
-      default:
-        return false;
-    }
-    */
   };
   
   const renderQuestion = () => {
@@ -383,12 +360,8 @@ const QuestionsPage = () => {
   };
   
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 py-8 px-4 pt-20">
       <div className="container mx-auto">
-        <header className="flex justify-center mb-12">
-          <Logo />
-        </header>
-        
         <main className="max-w-4xl mx-auto">
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-lwai-deepBlue">

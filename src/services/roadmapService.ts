@@ -1,7 +1,37 @@
 import { UserAnswers, RoadmapStep, ResourceType } from '../contexts/RoadmapContext';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  getDocs, 
+  getDoc,
+  doc, 
+  deleteDoc, 
+  updateDoc, 
+  serverTimestamp,
+  addDoc
+} from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+
+// Debug Firebase configuration
+console.log("Firestore db instance:", db ? "Valid" : "Invalid");
+console.log("Firestore configuration loaded:", Boolean(db));
 
 // Add a type for the generation engine choice
 export type GenerationEngine = 'chatgpt' | 'perplexity';
+
+// Add a type for Roadmap documents
+export interface RoadmapDocument {
+  id: string;
+  userId: string;
+  topic: string;
+  userAnswers: UserAnswers;
+  steps: RoadmapStep[];
+  createdAt: any; // Firebase Timestamp
+  lastUpdatedAt: any; // Firebase Timestamp
+  progress: number;
+}
 
 // Determine the appropriate API base URL based on environment
 const getApiBaseUrl = () => {
@@ -117,5 +147,232 @@ export const generateRoadmap = async (userAnswers: UserAnswers, engine: Generati
     console.error('Error generating roadmap:', error);
     // No fallback to mock data - just throw the error
     throw error;
+  }
+};
+
+/**
+ * Fetch all roadmaps for a specific user
+ */
+export const getUserRoadmaps = async (userId: string): Promise<RoadmapDocument[]> => {
+  try {
+    console.log(`Attempting to fetch roadmaps for user: ${userId}`);
+    
+    if (!userId) {
+      console.warn("getUserRoadmaps was called with no userId");
+      return [];
+    }
+    
+    // First check if the roadmaps collection exists and has any documents
+    const collectionRef = collection(db, "roadmaps");
+    
+    // Create query - Try without orderBy first to avoid index issues
+    const q = query(
+      collectionRef, 
+      where("userId", "==", userId)
+    );
+    
+    console.log("Executing Firestore query for roadmaps");
+    const querySnapshot = await getDocs(q);
+    console.log(`Query returned ${querySnapshot.size} results`);
+    
+    const roadmaps: RoadmapDocument[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      roadmaps.push({
+        id: doc.id,
+        ...data
+      } as RoadmapDocument);
+    });
+    
+    // Sort on the client side instead of using orderBy (to avoid index issues)
+    roadmaps.sort((a, b) => {
+      if (!a.createdAt || !b.createdAt) return 0;
+      
+      // Convert Firestore timestamps to milliseconds for comparison
+      const timeA = a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+      const timeB = b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+      
+      // Sort descending (newest first)
+      return timeB - timeA;
+    });
+    
+    return roadmaps;
+  } catch (error) {
+    console.error("Error fetching user roadmaps:", error);
+    // More descriptive error that might help debugging
+    if (error instanceof Error) {
+      console.error(`Error details: ${error.message}`);
+      if (error.message.includes("index")) {
+        console.error("This appears to be a Firestore index error. You may need to create a composite index.");
+      }
+    }
+    
+    // Return empty array instead of throwing, to avoid breaking the UI
+    return [];
+  }
+};
+
+/**
+ * Get a single roadmap by ID
+ */
+export const getRoadmapById = async (roadmapId: string): Promise<RoadmapDocument | null> => {
+  try {
+    console.log("getRoadmapById called with ID:", roadmapId);
+    if (!roadmapId) {
+      console.error("getRoadmapById called with empty ID");
+      throw new Error("Invalid roadmap ID");
+    }
+    
+    // Debug Firebase configuration
+    console.log("Firestore instance:", db ? "Available" : "Unavailable");
+    console.log("Firebase app config:", JSON.stringify(db?.app?.options || {}).substring(0, 200));
+    
+    const roadmapRef = doc(db, "roadmaps", roadmapId);
+    console.log("Executing Firestore getDoc for roadmap", roadmapId);
+    
+    try {
+      const roadmapDoc = await getDoc(roadmapRef);
+      console.log("getDoc completed. Document exists:", roadmapDoc.exists());
+      
+      if (roadmapDoc.exists()) {
+        const data = roadmapDoc.data();
+        console.log("Document data keys:", Object.keys(data));
+        console.log("Has steps array:", Boolean(data.steps));
+        console.log("Steps is array:", Array.isArray(data.steps));
+        if (data.steps) console.log("Steps length:", data.steps.length);
+        
+        // Check if data has required fields
+        if (!data.steps || !Array.isArray(data.steps)) {
+          console.error("Roadmap missing steps array or invalid format:", data);
+          throw new Error("Roadmap data is missing required fields");
+        }
+        
+        return {
+          id: roadmapDoc.id,
+          ...data
+        } as RoadmapDocument;
+      } else {
+        console.log("Roadmap document does not exist");
+        return null;
+      }
+    } catch (docError) {
+      console.error("Error in getDoc operation:", docError);
+      throw docError;
+    }
+  } catch (error) {
+    console.error("Error fetching roadmap:", error);
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+    }
+    throw error;
+  }
+};
+
+/**
+ * Delete a roadmap
+ */
+export const deleteRoadmap = async (roadmapId: string): Promise<boolean> => {
+  try {
+    await deleteDoc(doc(db, "roadmaps", roadmapId));
+    return true;
+  } catch (error) {
+    console.error("Error deleting roadmap:", error);
+    throw error;
+  }
+};
+
+/**
+ * Update a roadmap's title
+ */
+export const updateRoadmapTitle = async (roadmapId: string, newTitle: string): Promise<boolean> => {
+  try {
+    await updateDoc(doc(db, "roadmaps", roadmapId), {
+      topic: newTitle,
+      lastUpdatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error("Error updating roadmap title:", error);
+    throw error;
+  }
+};
+
+/**
+ * Update a roadmap's progress
+ */
+export const updateRoadmapProgress = async (roadmapId: string, progress: number): Promise<boolean> => {
+  try {
+    await updateDoc(doc(db, "roadmaps", roadmapId), {
+      progress,
+      lastUpdatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error("Error updating roadmap progress:", error);
+    throw error;
+  }
+};
+
+/**
+ * Debug utility to create a test roadmap document 
+ * This is just for testing - you may want to comment out or remove this later
+ */
+export const createTestRoadmap = async (userId: string) => {
+  if (!userId) {
+    console.error("Cannot create test roadmap without userId");
+    return;
+  }
+  
+  try {
+    console.log("Creating test roadmap for debugging");
+    
+    // Create a simple test roadmap
+    const testRoadmap = {
+      userId,
+      topic: "Test Roadmap",
+      userAnswers: {
+        topic: "Test Roadmap",
+        existingKnowledge: "Some knowledge",
+        background: "intermediate",
+        pace: "steady",
+        contentPreference: "article",
+        availableTime: "1-3 hours",
+        goal: "Testing"
+      },
+      steps: [
+        {
+          id: `step-test-1`,
+          stepNumber: 1,
+          title: "Test Step 1",
+          description: "This is a test step",
+          resources: [
+            {
+              id: `resource-test-1`,
+              title: "Test Resource",
+              type: "article",
+              link: "https://example.com",
+              timeEstimate: "10 min",
+              source: "Example",
+              description: "A test resource",
+              completed: false
+            }
+          ],
+          completed: false,
+          timeEstimate: "10 min"
+        }
+      ],
+      createdAt: serverTimestamp(),
+      lastUpdatedAt: serverTimestamp(),
+      progress: 0
+    };
+    
+    // Add to Firestore - use addDoc to auto-generate ID
+    const docRef = await addDoc(collection(db, "roadmaps"), testRoadmap);
+    console.log("Created test roadmap with ID:", docRef.id);
+    
+    return docRef.id;
+  } catch (error) {
+    console.error("Error creating test roadmap:", error);
   }
 };

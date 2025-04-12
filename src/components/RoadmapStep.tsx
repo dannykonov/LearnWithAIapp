@@ -1,11 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
-import { RoadmapStep as RoadmapStepType } from '../contexts/RoadmapContext';
+import { RoadmapStep as RoadmapStepType, useRoadmap } from '../contexts/RoadmapContext';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp, Clock, Star, Flag, Award } from 'lucide-react';
 import ResourceCard from './ResourceCard';
-import { useRoadmap } from '../contexts/RoadmapContext';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 

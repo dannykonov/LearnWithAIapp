@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Define types for our data structures
@@ -55,6 +55,7 @@ interface RoadmapContextType {
   setCurrentStep: (step: number) => void;
   setIsLoading: (loading: boolean) => void;
   generateMoreSteps: () => void;
+  setProgress: (newProgress: number) => void;
 }
 
 // Default values
@@ -88,21 +89,24 @@ const RoadmapContext = createContext<RoadmapContextType>({
   setCurrentStep: () => {},
   setIsLoading: () => {},
   generateMoreSteps: () => {},
+  setProgress: () => {},
 });
 
 // Create provider component
 export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
   const [roadmap, setRoadmapState] = useState<RoadmapStep[]>([]);
-  const [userAnswers, setUserAnswers] = useState<UserAnswers>(defaultUserAnswers);
+  const [userAnswers, setUserAnswersState] = useState<UserAnswers>(defaultUserAnswers);
   const [userId, setUserId] = useState<string | null>(null);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [currentStep, setCurrentStepState] = useState(0);
+  const [isLoading, setIsLoadingState] = useState(false);
+  const [manualProgress, setManualProgress] = useState<number | null>(null);
   
   // Derived stats
   const totalSteps = roadmap.length;
   const completedSteps = roadmap.filter(step => step.completed).length;
-  const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  const calculatedProgress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  const progress = manualProgress !== null ? manualProgress : calculatedProgress;
   
   const totalResources = roadmap.reduce((total, step) => total + step.resources.length, 0);
   const completedResources = roadmap.reduce(
@@ -114,29 +118,42 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (!currentUser) {
       setRoadmapState([]);
-      setUserAnswers(defaultUserAnswers);
+      setUserAnswersState(defaultUserAnswers);
       setUserId(null);
-      setCurrentStep(0);
+      setCurrentStepState(0);
+      setManualProgress(null);
+    } else {
+      setUserId(currentUser.uid);
     }
   }, [currentUser]);
 
   // Modified setRoadmap to capture userId
-  const setRoadmap = (newRoadmap: RoadmapStep[]) => {
+  const setRoadmap = useCallback((newRoadmap: RoadmapStep[]) => {
+    console.log("setRoadmap called with data:", JSON.stringify(newRoadmap).substring(0, 100) + "...");
+    console.log("newRoadmap is array:", Array.isArray(newRoadmap));
+    console.log("newRoadmap length:", newRoadmap.length);
+
     setRoadmapState(newRoadmap);
-    if (currentUser) {
-        setUserId(currentUser.uid);
-    }
-  };
+  }, []);
+
+  // Renamed and wrapped in useCallback
+  const setUserAnswers = useCallback((newAnswers: UserAnswers) => {
+    setUserAnswersState(newAnswers);
+  }, []);
+
+  // Function to manually set progress (for loading saved roadmaps)
+  const setProgress = useCallback((newProgress: number) => {
+    setManualProgress(newProgress);
+  }, []);
 
   // Toggle step completion
-  const toggleStepCompleted = (stepId: string) => {
+  const toggleStepCompleted = useCallback((stepId: string) => {
     setRoadmapState(prev => 
       prev.map(step => 
         step.id === stepId 
           ? { 
               ...step, 
               completed: !step.completed,
-              // Mark all resources as completed/incomplete along with the step
               resources: step.resources.map(resource => ({
                 ...resource,
                 completed: !step.completed
@@ -145,10 +162,11 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
           : step
       )
     );
-  };
+    setManualProgress(null);
+  }, []);
 
   // Toggle resource completion
-  const toggleResourceCompleted = (stepId: string, resourceId: string) => {
+  const toggleResourceCompleted = useCallback((stepId: string, resourceId: string) => {
     setRoadmapState(prev => 
       prev.map(step => 
         step.id === stepId 
@@ -159,7 +177,6 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   ? { ...resource, completed: !resource.completed } 
                   : resource
               ),
-              // Check if all resources are completed to mark step as completed
               completed: step.resources.every(r => 
                 r.id === resourceId ? !r.completed : r.completed
               )
@@ -167,17 +184,25 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
           : step
       )
     );
-  };
+    setManualProgress(null);
+  }, []);
+
+  // Renamed and wrapped in useCallback
+  const setCurrentStep = useCallback((step: number) => {
+    setCurrentStepState(step);
+  }, []);
+
+  // Renamed and wrapped in useCallback
+  const setIsLoading = useCallback((loading: boolean) => {
+    setIsLoadingState(loading);
+  }, []);
 
   // Function to generate more steps
-  const generateMoreSteps = async () => {
-    setIsLoading(true);
+  const generateMoreSteps = useCallback(async () => {
+    setIsLoadingState(true);
     try {
-      // In a real implementation, this would call the API to generate more steps
-      // For now, we'll simulate it with a timeout
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Example of how we would add new steps
       const newStepNumber = roadmap.length + 1;
       const newSteps: RoadmapStep[] = [
         {
@@ -211,36 +236,43 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ];
       
       setRoadmapState(prev => [...prev, ...newSteps]);
+      setManualProgress(null);
     } catch (error) {
       console.error('Error generating more steps:', error);
     } finally {
-      setIsLoading(false);
+      setIsLoadingState(false);
     }
-  };
+  }, [roadmap, userAnswers]);
+
+  const contextValue = useMemo(() => ({
+    roadmap,
+    userAnswers,
+    userId,
+    currentStep,
+    isLoading,
+    progress,
+    totalSteps,
+    completedSteps,
+    completedResources,
+    totalResources,
+    
+    setUserAnswers,
+    setRoadmap,
+    toggleStepCompleted,
+    toggleResourceCompleted,
+    setCurrentStep,
+    setIsLoading,
+    generateMoreSteps,
+    setProgress,
+  }), [
+    roadmap, userAnswers, userId, currentStep, isLoading, progress, 
+    totalSteps, completedSteps, completedResources, totalResources,
+    setUserAnswers, setRoadmap, toggleStepCompleted, toggleResourceCompleted, 
+    setCurrentStep, setIsLoading, generateMoreSteps, setProgress 
+  ]);
 
   return (
-    <RoadmapContext.Provider
-      value={{
-        roadmap,
-        userAnswers,
-        userId,
-        currentStep,
-        isLoading,
-        progress,
-        totalSteps,
-        completedSteps,
-        completedResources,
-        totalResources,
-        
-        setUserAnswers,
-        setRoadmap,
-        toggleStepCompleted,
-        toggleResourceCompleted,
-        setCurrentStep,
-        setIsLoading,
-        generateMoreSteps
-      }}
-    >
+    <RoadmapContext.Provider value={contextValue}>
       {children}
     </RoadmapContext.Provider>
   );
