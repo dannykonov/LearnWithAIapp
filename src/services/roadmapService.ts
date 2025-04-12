@@ -40,9 +40,9 @@ const getApiBaseUrl = () => {
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     return 'http://localhost:3001';
   } else {
-    // In production, use relative path (API is hosted on same domain via Vercel)
+    // In production, use relative path since API endpoints are deployed with the frontend
     console.log('Using production API path (relative URL)');
-    return '';
+    return ''; // Empty string means use relative paths from the same domain
   }
 };
 
