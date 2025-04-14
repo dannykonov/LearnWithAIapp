@@ -19,7 +19,7 @@ console.log("Firestore db instance:", db ? "Valid" : "Invalid");
 console.log("Firestore configuration loaded:", Boolean(db));
 
 // Add a type for the generation engine choice
-export type GenerationEngine = 'chatgpt' | 'perplexity';
+export type GenerationEngine = 'chatgpt' | 'perplexity' | 'enhanced';
 
 // Add a type for Roadmap documents
 export interface RoadmapDocument {
@@ -50,13 +50,11 @@ const getApiBaseUrl = () => {
 // Add 'engine' parameter
 export const generateRoadmap = async (userAnswers: UserAnswers, engine: GenerationEngine = 'perplexity'): Promise<RoadmapStep[]> => {
   try {
-    // Always use Perplexity, ignore passed engine parameter
-    const forcedEngine: GenerationEngine = 'perplexity';
-    console.log(`Sending request to API using ${forcedEngine} engine with answers:`, JSON.stringify(userAnswers));
+    // Use our new enhanced roadmap generation endpoint
+    console.log(`Sending request to API for enhanced roadmap generation with topic: ${userAnswers.topic}`);
     
-    // Always use perplexity API endpoint
     const apiBaseUrl = getApiBaseUrl();
-    const apiUrl = `${apiBaseUrl}/api/generate-roadmap-perplexity`;
+    const apiUrl = `${apiBaseUrl}/api/generate-enhanced-roadmap`;
     
     console.log('Calling API at URL:', apiUrl);
     console.log('Current hostname:', window.location.hostname);
@@ -83,10 +81,10 @@ export const generateRoadmap = async (userAnswers: UserAnswers, engine: Generati
       let roadmapData: RoadmapStep[];
       
       if (Array.isArray(responseData)) {
-        // Direct array response (like from generate-roadmap-with-search)
+        // Direct array response
         roadmapData = responseData;
       } else if (responseData.roadmap && Array.isArray(responseData.roadmap)) {
-        // Nested structure (like from generate-roadmap-perplexity)
+        // Nested structure (like from enhanced roadmap)
         roadmapData = responseData.roadmap;
       } else {
         console.error('Unknown response format:', responseData);
@@ -105,6 +103,7 @@ export const generateRoadmap = async (userAnswers: UserAnswers, engine: Generati
         stepNumber: step.stepNumber || index + 1,
         title: step.title || `Step ${index + 1}`,
         description: step.description || '',
+        connectionText: step.connectionText || '',  // Add the new connectionText field
         resources: Array.isArray(step.resources) ? step.resources.map((resource, rIndex) => {
           // Convert resource type to a valid ResourceType
           let validType: ResourceType = 'article';
@@ -125,7 +124,8 @@ export const generateRoadmap = async (userAnswers: UserAnswers, engine: Generati
             timeEstimate: resource.timeEstimate || '30 min',
             source: resource.source || 'Unknown',
             description: resource.description || '',
-            completed: false
+            completed: false,
+            isFallback: resource.isFallback || false  // Add isFallback property
           };
         }) : [],
         completed: false,
@@ -139,7 +139,6 @@ export const generateRoadmap = async (userAnswers: UserAnswers, engine: Generati
     }
   } catch (error) {
     console.error('Error generating roadmap:', error);
-    // No fallback to mock data - just throw the error
     throw error;
   }
 };

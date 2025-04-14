@@ -13,6 +13,7 @@ export interface Resource {
   source: string;
   description?: string;
   completed: boolean;
+  isFallback?: boolean;
 }
 
 export interface RoadmapStep {
@@ -20,6 +21,7 @@ export interface RoadmapStep {
   stepNumber: number;
   title: string;
   description: string;
+  connectionText?: string;
   resources: Resource[];
   completed: boolean;
   timeEstimate: string;

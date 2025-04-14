@@ -26,7 +26,7 @@ const QuestionsPage = () => {
   const { currentUser } = useAuth();
   const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading } = useRoadmap();
   const [currentQuestion, setCurrentQuestion] = useState(1);
-  const [selectedEngine] = useState<GenerationEngine>('perplexity');
+  const [selectedEngine] = useState<GenerationEngine>('enhanced');
   
   useEffect(() => {
     if (!currentUser || !userAnswers.topic) {
@@ -57,8 +57,8 @@ const QuestionsPage = () => {
         })()
       };
       
-      console.log('Submitting with engine:', selectedEngine);
-      const roadmapData = await generateRoadmap(sanitizedAnswers, selectedEngine);
+      console.log('Submitting with enhanced roadmap generation');
+      const roadmapData = await generateRoadmap(sanitizedAnswers, 'enhanced');
       setRoadmap(roadmapData);
 
       try {

@@ -78,11 +78,13 @@ const RoadmapPage = () => {
                   timeEstimate: resource.timeEstimate || '30 min',
                   source: resource.source || 'Unknown',
                   description: resource.description || '',
-                  completed: Boolean(resource.completed)
+                  completed: Boolean(resource.completed),
+                  isFallback: Boolean(resource.isFallback)
                 }))
               : [],
             completed: Boolean(step.completed),
-            timeEstimate: step.timeEstimate || '30 min'
+            timeEstimate: step.timeEstimate || '30 min',
+            connectionText: step.connectionText || ''
           }));
           
           console.log("Normalized steps:", normalizedSteps.length);
@@ -296,12 +298,19 @@ const RoadmapPage = () => {
           <div className="relative max-w-3xl mx-auto">
             <div className="absolute top-0 bottom-0 left-[29px] w-1 bg-lwai-lightBlue/40 rounded-full -z-10"></div>
             
-            {roadmap.map((step) => (
-              <RoadmapStep 
-                key={step.id} 
-                step={step} 
-                totalSteps={roadmap.length}
-              />
+            {roadmap.map((step, index) => (
+              <>
+                <RoadmapStep 
+                  key={step.id} 
+                  step={step} 
+                  totalSteps={roadmap.length}
+                />
+                {index > 0 && step.connectionText && (
+                  <div className="mb-4 text-sm text-gray-600 italic bg-gray-50 p-3 rounded-md border-l-4 border-blue-400">
+                    {step.connectionText}
+                  </div>
+                )}
+              </>
             ))}
             
             <div className="flex justify-center mt-8 mb-12">
