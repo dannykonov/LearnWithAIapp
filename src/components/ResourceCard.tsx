@@ -35,16 +35,68 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onToggleCompleted
   );
   const [articleContent, setArticleContent] = useState<string | null>(null);
   const [isLoadingArticle, setIsLoadingArticle] = useState(false);
+  const [isCheckingEmbeddable, setIsCheckingEmbeddable] = useState(false);
+  
+  // Check if YouTube videos are embeddable on component mount
+  useEffect(() => {
+    const checkVideoEmbeddable = async () => {
+      // Only check for YouTube video resources
+      if (resource.type !== 'video' || !resource.link || isCheckingEmbeddable) {
+        return;
+      }
+      
+      try {
+        setIsCheckingEmbeddable(true);
+        
+        // Get the base URL for API calls
+        const getApiBaseUrl = () => {
+          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return 'http://localhost:3001';
+          } else {
+            return '';
+          }
+        };
+        
+        const apiBaseUrl = getApiBaseUrl();
+        const response = await fetch(`${apiBaseUrl}/api/check-youtube-video`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoUrl: resource.link
+          }),
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to check video embeddability:', response.status);
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('Video embeddability check result:', data);
+        
+        // If the video is not embeddable, mark it as an error
+        if (!data.embeddable) {
+          console.log('Video is not embeddable, handling error:', resource.link);
+          setVideoEmbedStatus('error');
+          // No longer generating articles automatically
+        }
+      } catch (error) {
+        console.error('Error checking video embeddability:', error);
+      } finally {
+        setIsCheckingEmbeddable(false);
+      }
+    };
+    
+    checkVideoEmbeddable();
+  }, [resource.type, resource.link]);
   
   // Function to handle video loading errors
   const handleVideoError = () => {
     console.error(`Failed to load video: ${resource.link}`);
     setVideoEmbedStatus('error');
-    
-    // If we haven't already generated an article, do it now
-    if (!articleContent && !isLoadingArticle) {
-      generateArticleForTopic();
-    }
+    // No longer generating articles automatically
   };
   
   // Function to handle video loading success
@@ -195,36 +247,6 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onToggleCompleted
   const renderEmbeddedContent = () => {
     switch(resource.type) {
       case 'video':
-        // If we already have an article content (e.g., from a previous failed video load),
-        // show it alongside the video options
-        if (articleContent) {
-          return (
-            <div className="mt-3 space-y-4">
-              {/* Show article content */}
-              <div className="p-4 border rounded-lg bg-white/50">
-                <h4 className="font-medium text-lwai-deepBlue mb-2">Article About This Topic</h4>
-                <div 
-                  className="prose max-w-none text-sm text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: articleContent }}
-                />
-              </div>
-              
-              {/* Show direct YouTube link */}
-              <div className="flex justify-center mt-2">
-                <a 
-                  href={getWatchLink()} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
-                >
-                  <Youtube className="mr-2 h-4 w-4" />
-                  Watch on YouTube
-                </a>
-              </div>
-            </div>
-          );
-        }
-        
         // YouTube embed handling with error fallback
         if (videoEmbedStatus === 'loading' || videoEmbedStatus === 'success') {
           return (
@@ -251,56 +273,25 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onToggleCompleted
             </div>
           );
         } else if (videoEmbedStatus === 'error') {
+          // Simplified UI - only shows a direct link to YouTube
           return (
             <div className="mt-3 flex flex-col items-center">
-              {isLoadingArticle ? (
-                <div className="w-full p-6 space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Skeleton className="h-4 w-4" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-2/3" />
-                  <div className="text-center text-sm text-gray-500 animate-pulse">
-                    Generating article content...
-                  </div>
-                </div>
-              ) : articleContent ? (
-                <div className="p-4 border rounded-lg bg-white/50 w-full">
-                  <h4 className="font-medium text-lwai-deepBlue mb-2">Article About This Topic</h4>
-                  <div 
-                    className="prose max-w-none text-sm text-gray-700"
-                    dangerouslySetInnerHTML={{ __html: articleContent }}
-                  />
-                </div>
-              ) : (
-                <div className="flex flex-col items-center p-6 border border-red-200 rounded-lg bg-red-50">
-                  <AlertCircle className="h-8 w-8 text-red-500 mb-2" />
-                  <h4 className="font-medium text-red-700">Video couldn't be embedded</h4>
-                  <p className="text-sm text-gray-600 mb-4 text-center">
-                    YouTube doesn't allow this video to be embedded due to security settings.
-                  </p>
-                  <div className="flex space-x-3">
-                    <a 
-                      href={getWatchLink()} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
-                    >
-                      <Youtube className="mr-2 h-4 w-4" />
-                      Watch on YouTube
-                    </a>
-                    <Button 
-                      variant="outline" 
-                      onClick={generateArticleForTopic}
-                      disabled={isLoadingArticle}
-                    >
-                      Generate Article
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <div className="flex flex-col items-center p-6 border border-red-200 rounded-lg bg-red-50">
+                <AlertCircle className="h-8 w-8 text-red-500 mb-2" />
+                <h4 className="font-medium text-red-700">Video couldn't be embedded</h4>
+                <p className="text-sm text-gray-600 mb-4 text-center">
+                  YouTube doesn't allow this video to be embedded due to security settings.
+                </p>
+                <a 
+                  href={getWatchLink()} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+                >
+                  <Youtube className="mr-2 h-4 w-4" />
+                  Watch on YouTube
+                </a>
+              </div>
             </div>
           );
         }

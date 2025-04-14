@@ -58,6 +58,42 @@ const extractJSONFromMarkdown = (text: string) => {
   }
 };
 
+// Add a function to check if a YouTube video is embeddable
+const checkVideoEmbeddable = async (url: string, apiKey: string): Promise<boolean> => {
+  try {
+    // Extract video ID from URL
+    let videoId = '';
+    
+    if (url.includes('youtube.com/embed/')) {
+      videoId = url.split('youtube.com/embed/')[1]?.split('?')[0] || '';
+    } else if (url.includes('youtube.com/watch')) {
+      const urlObj = new URL(url);
+      videoId = urlObj.searchParams.get('v') || '';
+    } else if (url.includes('youtu.be/')) {
+      videoId = url.split('youtu.be/')[1]?.split('?')[0] || '';
+    }
+    
+    if (!videoId) {
+      console.log('Could not extract video ID from URL:', url);
+      return false;
+    }
+    
+    // Call the YouTube Data API to check embeddability
+    const apiUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=status&key=${apiKey}`;
+    const response = await axios.get(apiUrl);
+    
+    if (response.data && response.data.items && response.data.items.length > 0) {
+      return response.data.items[0].status.embeddable === true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error checking video embeddability:', error);
+    // On error, assume it's embeddable to avoid unnecessary fallbacks
+    return true;
+  }
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -359,6 +395,25 @@ DO NOT return any text before or after the JSON.`;
             durationMinutes: 20,
             isFallback: true
           };
+        }
+      }
+      
+      // If we have a Google API key, check if the video is embeddable
+      const googleApiKey = process.env.GOOGLE_API_KEY;
+      if (googleApiKey && videoData.youtubeUrl && videoData.youtubeUrl.includes('youtube.com/embed/')) {
+        try {
+          const isEmbeddable = await checkVideoEmbeddable(videoData.youtubeUrl, googleApiKey);
+          
+          if (!isEmbeddable) {
+            console.log(`Video is not embeddable, using search URL instead: ${videoData.youtubeUrl}`);
+            videoData.youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${subtopic.searchQuery} tutorial`)}`;
+            videoData.videoFound = false;
+            
+            // Try to find an alternative video that is embeddable
+            // This can be an improvement for later
+          }
+        } catch (error) {
+          console.error('Error checking video embeddability during roadmap generation:', error);
         }
       }
       
