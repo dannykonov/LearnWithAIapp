@@ -308,6 +308,22 @@ export const updateRoadmapProgress = async (roadmapId: string, progress: number)
 };
 
 /**
+ * Update a roadmap's steps
+ */
+export const updateRoadmapSteps = async (roadmapId: string, steps: RoadmapStep[]): Promise<boolean> => {
+  try {
+    await updateDoc(doc(db, "roadmaps", roadmapId), {
+      steps,
+      lastUpdatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error("Error updating roadmap steps:", error);
+    throw error;
+  }
+};
+
+/**
  * Debug utility to create a test roadmap document 
  * This is just for testing - you may want to comment out or remove this later
  */

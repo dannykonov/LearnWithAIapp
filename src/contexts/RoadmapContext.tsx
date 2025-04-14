@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/components/ui/use-toast';
+import { updateRoadmapSteps } from '@/services/roadmapService';
 
 // Define types for our data structures
 export type ResourceType = 'video' | 'article' | 'interactive' | 'pdf' | 'podcast' | 'thread';
@@ -201,50 +203,94 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Function to generate more steps
   const generateMoreSteps = useCallback(async () => {
+    console.log("generateMoreSteps called - starting process");
     setIsLoadingState(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const newStepNumber = roadmap.length + 1;
-      const newSteps: RoadmapStep[] = [
-        {
-          id: `step-${Date.now()}`,
-          stepNumber: newStepNumber,
-          title: `Advanced ${userAnswers.topic} Concepts`,
-          description: `Now that you've mastered the basics, let's dive deeper into ${userAnswers.topic}.`,
-          resources: [
-            {
-              id: `resource-${Date.now()}-1`,
-              title: `Advanced ${userAnswers.topic} Tutorial`,
-              type: 'video',
-              link: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-              timeEstimate: '15 min',
-              source: 'YouTube',
-              completed: false
-            },
-            {
-              id: `resource-${Date.now()}-2`,
-              title: `${userAnswers.topic} Best Practices`,
-              type: 'article',
-              link: 'https://example.com/best-practices',
-              timeEstimate: '10 min',
-              source: 'Example Blog',
-              completed: false
-            }
-          ],
-          completed: false,
-          timeEstimate: '25 min'
+      // Get API base URL
+      const getApiBaseUrl = () => {
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return 'http://localhost:3001';
+        } else {
+          console.log('Using production API path (relative URL)');
+          return ''; // Empty string means use relative paths from the same domain
         }
-      ];
+      };
       
-      setRoadmapState(prev => [...prev, ...newSteps]);
+      const apiBaseUrl = getApiBaseUrl();
+      const apiUrl = `${apiBaseUrl}/api/generate-next-step`;
+      
+      console.log(`Calling API at URL: ${apiUrl}`);
+      console.log(`Current hostname: ${window.location.hostname}`);
+      console.log(`Current roadmap length: ${roadmap.length} steps`);
+      console.log(`User topic: ${userAnswers.topic}`);
+      
+      // Make API call to generate next step
+      console.log("Sending API request for next step generation...");
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          currentRoadmap: roadmap,
+          userAnswers: userAnswers,
+          userId: userId
+        }),
+      });
+      
+      console.log(`API response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error occurred' }));
+        throw new Error(errorData.message || `Failed to generate next step: ${response.status}`);
+      }
+      
+      // Get new step
+      const newStep = await response.json();
+      console.log(`New step generated: ${newStep.title}`);
+      console.log(`Step details: stepNumber=${newStep.stepNumber}, resources=${newStep.resources.length}`);
+      
+      // Add it to the roadmap and determine the new roadmap
+      const updatedRoadmap = [...roadmap, newStep];
+      console.log(`Updated roadmap will have ${updatedRoadmap.length} steps`);
+      setRoadmapState(updatedRoadmap);
       setManualProgress(null);
+      
+      // If we have a roadmap ID in the URL (which would be stored in RoadmapPage),
+      // save the updated roadmap to Firebase
+      const roadmapIdMatch = window.location.pathname.match(/\/roadmap\/([^\/]+)/);
+      const roadmapId = roadmapIdMatch ? roadmapIdMatch[1] : null;
+      
+      if (roadmapId) {
+        console.log(`Found roadmap ID in URL: ${roadmapId}, saving to Firebase...`);
+        try {
+          await updateRoadmapSteps(roadmapId, updatedRoadmap);
+          console.log('Roadmap successfully updated in Firebase');
+        } catch (firebaseError) {
+          console.error('Error saving updated roadmap to Firebase:', firebaseError);
+          // Don't throw here - we want to show the new step even if saving fails
+        }
+      } else {
+        console.log('No roadmap ID found in URL - changes only saved locally');
+      }
+
+      // Show success toast
+      toast({
+        title: "New Learning Step Added",
+        description: `Added "${newStep.title}" to your learning roadmap.`,
+      });
     } catch (error) {
       console.error('Error generating more steps:', error);
+      toast({
+        title: "Error generating next step",
+        description: error instanceof Error ? error.message : "There was a problem generating the next step. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingState(false);
+      console.log("generateMoreSteps process completed");
     }
-  }, [roadmap, userAnswers]);
+  }, [roadmap, userAnswers, userId, setIsLoadingState]);
 
   const contextValue = useMemo(() => ({
     roadmap,
