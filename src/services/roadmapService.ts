@@ -48,21 +48,15 @@ const getApiBaseUrl = () => {
 
 // Calls the API endpoint to generate a roadmap
 // Add 'engine' parameter
-export const generateRoadmap = async (userAnswers: UserAnswers, engine: GenerationEngine = 'chatgpt'): Promise<RoadmapStep[]> => {
+export const generateRoadmap = async (userAnswers: UserAnswers, engine: GenerationEngine = 'perplexity'): Promise<RoadmapStep[]> => {
   try {
-    console.log(`Sending request to API using ${engine} engine with answers:`, JSON.stringify(userAnswers));
+    // Always use Perplexity, ignore passed engine parameter
+    const forcedEngine: GenerationEngine = 'perplexity';
+    console.log(`Sending request to API using ${forcedEngine} engine with answers:`, JSON.stringify(userAnswers));
     
-    // Determine API endpoint based on the engine choice
+    // Always use perplexity API endpoint
     const apiBaseUrl = getApiBaseUrl();
-    let apiUrl = '';
-    if (engine === 'perplexity') {
-      apiUrl = `${apiBaseUrl}/api/generate-roadmap-perplexity`;
-      // Ensure contentPreference reflects the engine's capability for the request (optional, depends on API)
-      // userAnswers.contentPreference = 'video'; // Example: Force video if using perplexity MVP
-    } else {
-      // Default to ChatGPT + Search
-      apiUrl = `${apiBaseUrl}/api/generate-roadmap-with-search`;
-    }
+    const apiUrl = `${apiBaseUrl}/api/generate-roadmap-perplexity`;
     
     console.log('Calling API at URL:', apiUrl);
     console.log('Current hostname:', window.location.hostname);

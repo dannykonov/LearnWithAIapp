@@ -26,7 +26,7 @@ const QuestionsPage = () => {
   const { currentUser } = useAuth();
   const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading } = useRoadmap();
   const [currentQuestion, setCurrentQuestion] = useState(1);
-  const [selectedEngine, setSelectedEngine] = useState<GenerationEngine>('chatgpt');
+  const [selectedEngine] = useState<GenerationEngine>('perplexity');
   
   useEffect(() => {
     if (!currentUser || !userAnswers.topic) {
@@ -107,7 +107,7 @@ const QuestionsPage = () => {
   }, [currentQuestion, navigate]);
   
   const handleNext = useCallback(() => {
-    if (currentQuestion < 7) {
+    if (currentQuestion < 6) {
       setCurrentQuestion(prev => prev + 1);
     } else {
       handleSubmit();
@@ -120,7 +120,7 @@ const QuestionsPage = () => {
   };
   
   const renderQuestion = () => {
-    const totalQuestions = 7;
+    const totalQuestions = 6;
     
     switch (currentQuestion) {
       case 1:
@@ -305,7 +305,7 @@ const QuestionsPage = () => {
             questionNumber={6}
             totalQuestions={totalQuestions}
             onBack={handleBack}
-            onNext={handleNext}
+            onNext={handleSubmit}
             canProceed={canProceed()}
           >
             <Textarea
@@ -317,40 +317,6 @@ const QuestionsPage = () => {
                 goal: e.target.value
               })}
             />
-          </OnboardingQuestion>
-        );
-        
-      case 7:
-        return (
-          <OnboardingQuestion
-            title="Choose Generation Engine"
-            description="Select the AI engine to generate your roadmap. Perplexity currently focuses only on YouTube videos."
-            questionNumber={totalQuestions}
-            totalQuestions={totalQuestions}
-            onBack={handleBack}
-            onNext={handleSubmit}
-            canProceed={canProceed()}
-          >
-            <RadioGroup
-              value={selectedEngine}
-              onValueChange={(value) => setSelectedEngine(value as GenerationEngine)}
-              className="grid gap-4"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="chatgpt" id="chatgpt" />
-                <Label htmlFor="chatgpt" className="font-normal text-base">
-                  Standard (ChatGPT + Search)
-                </Label>
-                <p className="text-sm text-muted-foreground ml-8">Generates diverse resources based on your preferences.</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="perplexity" id="perplexity" />
-                <Label htmlFor="perplexity" className="font-normal text-base">
-                  Perplexity (YouTube Videos Only - MVP)
-                </Label>
-                 <p className="text-sm text-muted-foreground ml-8">Generates a 5-step roadmap using only YouTube videos.</p>
-              </div>
-            </RadioGroup>
           </OnboardingQuestion>
         );
         
