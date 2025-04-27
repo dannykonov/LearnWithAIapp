@@ -1,16 +1,18 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 // If you need Storage later: import { getStorage } from "firebase/storage";
 
-// Debug log for environment variables
-console.log("Environment mode:", import.meta.env.MODE);
-console.log("Using Firebase emulator:", Boolean(import.meta.env.VITE_USE_FIREBASE_EMULATOR));
+// Debug log for environment variables - REMOVED
+// console.log("[firebaseConfig] Environment mode:", import.meta.env.MODE);
+// console.log("[firebaseConfig] VITE_USE_FIREBASE_EMULATOR:", import.meta.env.VITE_USE_FIREBASE_EMULATOR);
+// console.log("[firebaseConfig] Emulator Flag Type:", typeof import.meta.env.VITE_USE_FIREBASE_EMULATOR);
 
 // Your web app's Firebase configuration
 // Using Vite's environment variable convention (import.meta.env)
 // Make sure VITE_ prefix is used in your .env file
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -31,20 +33,13 @@ if (!getApps().length) {
 export const firebaseApp = app;
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 // export const storage = getStorage(app); // Uncomment when Storage is needed
 
-// Connect to Firebase emulator if in development
-if (import.meta.env.MODE === 'development' && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
-  console.log("Connecting to Firebase emulators");
-  try {
-    connectAuthEmulator(auth, 'http://localhost:9099');
-    connectFirestoreEmulator(db, 'localhost', 8090);
-    console.log("Successfully connected to Firebase emulators");
-  } catch (error) {
-    console.error("Failed to connect to Firebase emulators:", error);
-  }
-}
-
-console.log("Firebase initialized with config:", Object.keys(firebaseConfig).join(", "));
+// Connect to Firebase emulator if in development - DISABLED
+/*
+// Debug logs removed from here too
+*/
+console.log("[firebaseConfig] Firebase initialized (Connecting to LIVE project).");
 
 // console.log("Firebase Config:", firebaseConfig); // Remove temporary log 

@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { RoadmapStep as RoadmapStepType, useRoadmap } from '../contexts/RoadmapContext';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, Clock, Star, Flag, Award } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Star, Flag, Award, Headphones, Loader2 } from 'lucide-react';
 import ResourceCard from './ResourceCard';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
+import { generatePodcastText, convertTextToSpeech, storeAudioInFirebase } from '@/services/podcastService';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface RoadmapStepProps {
   step: RoadmapStepType;
@@ -15,10 +17,24 @@ interface RoadmapStepProps {
 const RoadmapStep: React.FC<RoadmapStepProps> = ({ step, totalSteps }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
+  const [podcastGenerated, setPodcastGenerated] = useState(false);
+  const [podcastUrl, setPodcastUrl] = useState<string | null>(null);
+  const [isGeneratingPodcast, setIsGeneratingPodcast] = useState(false);
   const { toggleStepCompleted, toggleResourceCompleted } = useRoadmap();
+  const { currentUser } = useAuth();
   
   // Determine if this is a milestone step (every third step)
   const isMilestone = step.stepNumber % 3 === 0;
+  
+  // Check local storage on component mount to see if podcast was already generated
+  useEffect(() => {
+    const storedPodcastState = localStorage.getItem(`podcast-${step.id}`);
+    const storedPodcastUrl = localStorage.getItem(`podcast-url-${step.id}`);
+    if (storedPodcastState === 'generated' && storedPodcastUrl) {
+      setPodcastGenerated(true);
+      setPodcastUrl(storedPodcastUrl);
+    }
+  }, [step.id]);
   
   const handleToggleStep = () => {
     const wasCompleted = step.completed;
@@ -48,6 +64,44 @@ const RoadmapStep: React.FC<RoadmapStepProps> = ({ step, totalSteps }) => {
   
   const handleToggleResource = (resourceId: string) => {
     toggleResourceCompleted(step.id, resourceId);
+  };
+
+  const handleGeneratePodcast = async () => {
+    // Check if currentUser exists and has a uid
+    if (!currentUser?.uid) { 
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to generate a podcast.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsGeneratingPodcast(true); // Set loading true
+    try {
+      const text = await generatePodcastText(step.description);
+      const audioBlob = await convertTextToSpeech(text);
+      const userId = currentUser.uid; // Use actual user ID from currentUser
+      const url = await storeAudioInFirebase(audioBlob, step.id, userId);
+      setPodcastGenerated(true);
+      setPodcastUrl(url);
+      localStorage.setItem(`podcast-${step.id}`, 'generated');
+      localStorage.setItem(`podcast-url-${step.id}`, url);
+      toast({
+        title: "Podcast Generated",
+        description: "Your podcast for this step has been generated!",
+        variant: "default",
+      });
+    } catch (error: any) {
+      console.error('Error generating podcast:', error);
+      toast({
+        title: "Error Generating Podcast",
+        description: error.message || "Failed to generate podcast. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPodcast(false); // Set loading false
+    }
   };
   
   // Calculate completion percentage for this step
@@ -182,6 +236,55 @@ const RoadmapStep: React.FC<RoadmapStepProps> = ({ step, totalSteps }) => {
               />
             ))}
           </div>
+          
+          {/* Only show Generate Podcast button if podcast hasn't been generated yet */}
+          {!podcastGenerated && (
+            <div className="mt-6 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGeneratePodcast}
+                disabled={isGeneratingPodcast}
+                className="text-yellow-600 hover:text-yellow-700 border-yellow-400 hover:bg-yellow-50 transition-all"
+              >
+                {isGeneratingPodcast ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...
+                  </>
+                ) : (
+                  <>
+                    <Headphones className="mr-1 h-4 w-4" /> Generate Podcast
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+          
+          {/* Podcast Player - Styling updated for consistency */}
+          {podcastGenerated && podcastUrl && (
+            <div className="mt-6">
+              {/* Use similar card styling as resources */}
+              <div className="p-4 border rounded-lg bg-white shadow-sm transition-all hover:shadow-md">
+                <h4 className="font-medium text-lwai-deepBlue mb-3 flex items-center">
+                  <Headphones className="mr-2 h-5 w-5 text-lwai-skyBlue" /> {/* Adjusted icon color */}
+                  Podcast: {step.title}
+                </h4>
+                <div className="w-full rounded-lg">
+                  {/* Standard HTML5 audio player - styling is browser-dependent but container is styled */}
+                  <audio
+                    className="w-full h-10" // Adjusted height slightly
+                    controls
+                    src={podcastUrl}
+                  >
+                    Your browser does not support the audio element.
+                  </audio>
+                  <p className="text-xs text-gray-500 mt-2 pl-1">
+                    This podcast was generated based on the learning step content.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
       

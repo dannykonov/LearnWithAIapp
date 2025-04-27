@@ -14,7 +14,8 @@ import {
   GraduationCap,
   Award,
   Lightbulb,
-  List
+  List,
+  FlaskConical
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { getRoadmapById, updateRoadmapProgress } from '@/services/roadmapService';
@@ -33,7 +34,8 @@ const RoadmapPage = () => {
     setProgress, 
     generateMoreSteps, 
     isLoading, 
-    setIsLoading 
+    setIsLoading,
+    isTestMode 
   } = useRoadmap();
   const [showConfetti, setShowConfetti] = useState(false);
   const [prevProgress, setPrevProgress] = useState(0);
@@ -204,6 +206,14 @@ const RoadmapPage = () => {
     return () => clearTimeout(loadingTimeout);
   }, [isLoadingRoadmap, navigate]);
 
+  // ADDED: Reset loading state when in test mode
+  useEffect(() => {
+    if (isTestMode && isLoading) {
+      console.log('Test mode detected with active loading state - forcing reset');
+      setIsLoading(false);
+    }
+  }, [isTestMode, isLoading, setIsLoading]);
+
   if (isLoadingRoadmap) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 py-8 px-4 pt-20 flex items-center justify-center">
@@ -225,6 +235,13 @@ const RoadmapPage = () => {
           <div className="mb-8 text-center">
             <div className="inline-block bg-lwai-deepBlue/10 px-4 py-2 rounded-full mb-4">
               <span className="font-medium text-lwai-deepBlue">Learning: {userAnswers.topic}</span>
+              
+              {/* ADDED: Test mode indicator */}
+              {isTestMode && (
+                <span className="ml-2 inline-flex items-center bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full">
+                  <FlaskConical className="h-3 w-3 mr-1" /> Test Mode
+                </span>
+              )}
             </div>
             <h1 className="text-3xl font-bold text-lwai-deepBlue bg-clip-text text-transparent bg-gradient-to-r from-lwai-deepBlue to-lwai-skyBlue">
               Your Learning Roadmap
@@ -292,6 +309,19 @@ const RoadmapPage = () => {
                 </p>
               </div>
             </div>
+            
+            {/* ADDED: Test mode warning if active */}
+            {isTestMode && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                <p className="flex items-center">
+                  <FlaskConical className="h-4 w-4 mr-2" />
+                  <strong>Test Mode Active:</strong> 
+                  <span className="ml-1">
+                    This is a placeholder roadmap for testing. AI generation features are disabled.
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
           
           {/* Roadmap visual journey with better alignment and spacing */}
@@ -316,10 +346,12 @@ const RoadmapPage = () => {
             <div className="flex justify-center mt-8 mb-12">
               <Button
                 onClick={generateMoreSteps}
-                disabled={isLoading}
+                disabled={isLoading || isTestMode}
                 className="bg-lwai-deepBlue hover:bg-lwai-deepBlue/90 text-white flex items-center shadow-lg hover:shadow-xl transition-all"
+                title={isTestMode ? "Cannot generate more steps in Test Mode" : "Generate next learning step"}
               >
-                {isLoading ? (
+                {/* CHANGED: Ensure loading state isn't shown in test mode */}
+                {isLoading && !isTestMode ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Generating more content...

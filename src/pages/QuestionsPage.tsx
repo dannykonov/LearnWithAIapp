@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import OnboardingQuestion from '@/components/OnboardingQuestion';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { useRoadmap } from '@/contexts/RoadmapContext';
+import { useRoadmap, ResourceType } from '@/contexts/RoadmapContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/firebaseConfig';
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -17,14 +17,14 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from 'lucide-react';
+import { Loader2, FlaskConical } from 'lucide-react';
 import { generateRoadmap, GenerationEngine } from '@/services/roadmapService';
 import { toast } from '@/components/ui/use-toast';
 
 const QuestionsPage = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading } = useRoadmap();
+  const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading, setIsTestMode, isTestMode } = useRoadmap();
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [selectedEngine] = useState<GenerationEngine>('enhanced');
   
@@ -57,31 +57,89 @@ const QuestionsPage = () => {
         })()
       };
       
-      console.log('Submitting with enhanced roadmap generation');
-      const roadmapData = await generateRoadmap(sanitizedAnswers, 'enhanced');
-      setRoadmap(roadmapData);
+      if (isTestMode) {
+        console.log('Generating placeholder roadmap in test mode');
+        const placeholderRoadmap = Array.from({ length: 5 }, (_, i) => ({
+          id: `test-step-${i + 1}-${Date.now()}`,
+          stepNumber: i + 1,
+          title: `Placeholder Step ${i + 1}`,
+          description: `This is a placeholder description for step ${i + 1}. AI generation was skipped. This should contain enough text to appear realistic and match the layout of a normally generated roadmap step. It should show how the component handles multi-line text without revealing too much emptiness.`,
+          resources: [
+            {
+              id: `test-resource-${i + 1}-${Date.now()}`,
+              title: `Placeholder Video Resource for Step ${i + 1}`,
+              type: 'video' as ResourceType,
+              link: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+              timeEstimate: '15 min',
+              source: 'Test Source',
+              description: 'This is a placeholder video resource for testing the UI layout without making actual API calls.',
+              completed: false,
+              isFallback: true
+            },
+            {
+              id: `test-resource-article-${i + 1}-${Date.now()}`,
+              title: `Placeholder Article Resource for Step ${i + 1}`,
+              type: 'article' as ResourceType,
+              link: 'https://example.com/test-article',
+              timeEstimate: '10 min',
+              source: 'Test Blog',
+              description: 'This is a placeholder article resource to ensure the resource list appears correctly.',
+              completed: false,
+              isFallback: true
+            }
+          ],
+          completed: false,
+          timeEstimate: '25 min',
+          connectionText: i > 0 ? `This step builds on concepts from step ${i}.` : 'This is the foundation of your learning journey.'
+        }));
 
-      try {
-        const roadmapDoc = {
-          userId: currentUser.uid,
-          topic: sanitizedAnswers.topic,
-          userAnswers: sanitizedAnswers,
-          steps: roadmapData,
-          createdAt: serverTimestamp(),
-          lastUpdatedAt: serverTimestamp(),
-          progress: 0,
-        };
-        const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
-        toast({
-          title: "Roadmap Generated & Saved",
-          description: `Your personalized learning roadmap for ${userAnswers.topic} is ready!`,
-        });
-      } catch (firestoreError) {
-        console.error('Error saving roadmap to Firestore:', firestoreError);
-        toast({
-          title: "Roadmap Generated (Save Failed)",
-          description: "Your roadmap was generated but failed to save. You can still view it now.",
-        });
+        setRoadmap(placeholderRoadmap);
+
+        try {
+          const roadmapDoc = {
+            userId: currentUser.uid,
+            topic: sanitizedAnswers.topic,
+            userAnswers: sanitizedAnswers,
+            steps: placeholderRoadmap,
+            createdAt: serverTimestamp(),
+            lastUpdatedAt: serverTimestamp(),
+            progress: 0,
+          };
+          const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
+          toast({
+            title: "Test Roadmap Created",
+            description: `A placeholder roadmap for ${userAnswers.topic} is ready.`,
+          });
+        } catch (firestoreError) {
+          console.error('Error saving test roadmap to Firestore:', firestoreError);
+        }
+      } else {
+        console.log('Submitting with enhanced roadmap generation');
+        const roadmapData = await generateRoadmap(sanitizedAnswers, 'enhanced');
+        setRoadmap(roadmapData);
+
+        try {
+          const roadmapDoc = {
+            userId: currentUser.uid,
+            topic: sanitizedAnswers.topic,
+            userAnswers: sanitizedAnswers,
+            steps: roadmapData,
+            createdAt: serverTimestamp(),
+            lastUpdatedAt: serverTimestamp(),
+            progress: 0,
+          };
+          const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
+          toast({
+            title: "Roadmap Generated & Saved",
+            description: `Your personalized learning roadmap for ${userAnswers.topic} is ready!`,
+          });
+        } catch (firestoreError) {
+          console.error('Error saving roadmap to Firestore:', firestoreError);
+          toast({
+            title: "Roadmap Generated (Save Failed)",
+            description: "Your roadmap was generated but failed to save. You can still view it now.",
+          });
+        }
       }
 
       navigate('/roadmap');
@@ -96,7 +154,31 @@ const QuestionsPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentUser, userAnswers, selectedEngine, setIsLoading, setRoadmap, navigate]);
+  }, [currentUser, userAnswers, selectedEngine, setIsLoading, setRoadmap, navigate, isTestMode]);
+  
+  const handleTestModeSubmit = useCallback(() => {
+    if (!currentUser) {
+      toast({ title: "Authentication Required", description: "Please log in first.", variant: "destructive" });
+      navigate('/login');
+      return;
+    }
+    
+    console.log('Activating Test Mode');
+    
+    setIsTestMode(true);
+    
+    toast({
+      title: "Test Mode Activated",
+      description: "Continue through all questions. A placeholder roadmap will be created at the end.",
+      variant: "default",
+    });
+    
+    if (currentQuestion < 6) {
+      setCurrentQuestion(prev => prev + 1);
+    } else {
+      handleSubmit();
+    }
+  }, [currentUser, setIsTestMode, toast, currentQuestion, setCurrentQuestion, handleSubmit, navigate]);
   
   const handleBack = useCallback(() => {
     if (currentQuestion > 1) {
@@ -115,7 +197,6 @@ const QuestionsPage = () => {
   }, [currentQuestion, handleSubmit]);
   
   const canProceed = () => {
-    // Always return true to allow empty inputs and proceed with Command+Enter
     return true;
   };
   
@@ -229,6 +310,7 @@ const QuestionsPage = () => {
             onBack={handleBack}
             onNext={handleNext}
             canProceed={canProceed()}
+            onTestModeSubmit={handleTestModeSubmit}
           >
             <RadioGroup
               value={userAnswers.contentPreference}
@@ -338,21 +420,13 @@ const QuestionsPage = () => {
             </p>
           </div>
           
-          {renderQuestion()}
-          
-          {isLoading && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-              <div className="bg-white p-8 rounded-xl max-w-md w-full text-center">
-                <Loader2 className="h-12 w-12 animate-spin mx-auto text-lwai-deepBlue mb-4" />
-                <h3 className="text-xl font-bold text-lwai-deepBlue mb-2">
-                  Creating Your Roadmap
-                </h3>
-                <p className="text-gray-600">
-                  Our AI is crafting a personalized learning journey for {userAnswers.topic} based on your responses.
-                </p>
-              </div>
-            </div>
-          )}
+          {isLoading ? (
+             <div className="flex flex-col items-center justify-center p-8 bg-white rounded-xl shadow-lg min-h-[300px]">
+               <Loader2 className="h-12 w-12 animate-spin text-lwai-deepBlue mb-4" />
+               <h2 className="text-xl font-semibold text-lwai-deepBlue mb-2">Generating Your Roadmap...</h2>
+               <p className="text-gray-600 text-center">Please wait while our AI crafts your personalized learning path. This may take a moment.</p>
+             </div>
+          ) : renderQuestion()}
         </main>
       </div>
     </div>

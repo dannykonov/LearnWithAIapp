@@ -50,6 +50,7 @@ interface RoadmapContextType {
   completedSteps: number;
   completedResources: number;
   totalResources: number;
+  isTestMode: boolean;
   
   // Actions
   setUserAnswers: (answers: UserAnswers) => void;
@@ -60,6 +61,7 @@ interface RoadmapContextType {
   setIsLoading: (loading: boolean) => void;
   generateMoreSteps: () => void;
   setProgress: (newProgress: number) => void;
+  setIsTestMode: (isTest: boolean) => void;
 }
 
 // Default values
@@ -85,6 +87,7 @@ const RoadmapContext = createContext<RoadmapContextType>({
   completedSteps: 0,
   completedResources: 0,
   totalResources: 0,
+  isTestMode: false,
   
   setUserAnswers: () => {},
   setRoadmap: () => {},
@@ -94,6 +97,7 @@ const RoadmapContext = createContext<RoadmapContextType>({
   setIsLoading: () => {},
   generateMoreSteps: () => {},
   setProgress: () => {},
+  setIsTestMode: () => {},
 });
 
 // Create provider component
@@ -105,6 +109,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [currentStep, setCurrentStepState] = useState(0);
   const [isLoading, setIsLoadingState] = useState(false);
   const [manualProgress, setManualProgress] = useState<number | null>(null);
+  const [isTestMode, setIsTestModeState] = useState(false);
   
   // Derived stats
   const totalSteps = roadmap.length;
@@ -126,18 +131,20 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setUserId(null);
       setCurrentStepState(0);
       setManualProgress(null);
+      setIsTestModeState(false);
     } else {
       setUserId(currentUser.uid);
     }
   }, [currentUser]);
 
-  // Modified setRoadmap to capture userId
+  // Modified setRoadmap to capture userId and reset test mode
   const setRoadmap = useCallback((newRoadmap: RoadmapStep[]) => {
     console.log("setRoadmap called with data:", JSON.stringify(newRoadmap).substring(0, 100) + "...");
     console.log("newRoadmap is array:", Array.isArray(newRoadmap));
     console.log("newRoadmap length:", newRoadmap.length);
 
     setRoadmapState(newRoadmap);
+    setIsTestModeState(false);
   }, []);
 
   // Renamed and wrapped in useCallback
@@ -203,6 +210,16 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Function to generate more steps
   const generateMoreSteps = useCallback(async () => {
+    if (isTestMode) {
+      console.log("generateMoreSteps: Aborted due to Test Mode.");
+      toast({
+        title: "Test Mode Active",
+        description: "Cannot generate more steps while in test mode.",
+        variant: "default",
+      });
+      return;
+    }
+
     console.log("generateMoreSteps called - starting process");
     setIsLoadingState(true);
     try {
@@ -290,7 +307,12 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setIsLoadingState(false);
       console.log("generateMoreSteps process completed");
     }
-  }, [roadmap, userAnswers, userId, setIsLoadingState]);
+  }, [roadmap, userAnswers, userId, setIsLoadingState, isTestMode]);
+
+  // ADDED: Setter function for test mode
+  const setIsTestMode = useCallback((isTest: boolean) => {
+    setIsTestModeState(isTest);
+  }, []);
 
   const contextValue = useMemo(() => ({
     roadmap,
@@ -303,7 +325,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     completedSteps,
     completedResources,
     totalResources,
-    
+    isTestMode,
     setUserAnswers,
     setRoadmap,
     toggleStepCompleted,
@@ -312,11 +334,13 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsLoading,
     generateMoreSteps,
     setProgress,
+    setIsTestMode,
   }), [
     roadmap, userAnswers, userId, currentStep, isLoading, progress, 
     totalSteps, completedSteps, completedResources, totalResources,
+    isTestMode,
     setUserAnswers, setRoadmap, toggleStepCompleted, toggleResourceCompleted, 
-    setCurrentStep, setIsLoading, generateMoreSteps, setProgress 
+    setCurrentStep, setIsLoading, generateMoreSteps, setProgress, setIsTestMode 
   ]);
 
   return (

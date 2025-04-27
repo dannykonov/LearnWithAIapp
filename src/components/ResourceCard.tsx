@@ -272,30 +272,28 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onToggleCompleted
               ></iframe>
             </div>
           );
-        } else if (videoEmbedStatus === 'error') {
-          // Simplified UI - only shows a direct link to YouTube
-          return (
-            <div className="mt-3 flex flex-col items-center">
-              <div className="flex flex-col items-center p-6 border border-red-200 rounded-lg bg-red-50">
-                <AlertCircle className="h-8 w-8 text-red-500 mb-2" />
-                <h4 className="font-medium text-red-700">Video couldn't be embedded</h4>
-                <p className="text-sm text-gray-600 mb-4 text-center">
-                  YouTube doesn't allow this video to be embedded due to security settings.
-                </p>
-                <a 
-                  href={getWatchLink()} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
-                >
-                  <Youtube className="mr-2 h-4 w-4" />
-                  Watch on YouTube
-                </a>
-              </div>
-            </div>
-          );
         }
-        return null;
+        // Simplified UI - only shows a direct link to YouTube
+        return (
+          <div className="mt-3 flex flex-col items-center">
+            <div className="flex flex-col items-center p-6 border border-red-200 rounded-lg bg-red-50">
+              <AlertCircle className="h-8 w-8 text-red-500 mb-2" />
+              <h4 className="font-medium text-red-700">Video couldn't be embedded</h4>
+              <p className="text-sm text-gray-600 mb-4 text-center">
+                YouTube doesn't allow this video to be embedded due to security settings.
+              </p>
+              <a 
+                href={getWatchLink()} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+              >
+                <Youtube className="mr-2 h-4 w-4" />
+                Watch on YouTube
+              </a>
+            </div>
+          </div>
+        );
         
       case 'article':
         return (
@@ -340,6 +338,39 @@ const ResourceCard: React.FC<ResourceCardProps> = ({ resource, onToggleCompleted
               title={resource.title}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             ></iframe>
+          </div>
+        );
+        
+      case 'podcast':
+        return (
+          <div className="mt-3 p-4 border rounded-lg bg-yellow-50 border-yellow-200">
+            <h4 className="font-medium text-lwai-deepBlue flex items-center">
+              <Headphones className="mr-2 h-4 w-4 text-yellow-600" />
+              {resource.title}
+            </h4>
+            {resource.description && (
+              <p className="text-sm text-gray-600 mt-1">{resource.description}</p>
+            )}
+            <div className="mt-3 bg-white rounded-lg p-3 shadow-sm">
+              <audio
+                className="w-full"
+                controls
+                src={resource.link || "https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3"}
+              >
+                Your browser does not support the audio element.
+              </audio>
+            </div>
+            <div className="mt-3 flex justify-between items-center text-xs text-gray-500">
+              <span>Source: {resource.source}</span>
+              <a 
+                href={resource.link} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-lwai-skyBlue hover:underline flex items-center"
+              >
+                Download <ExternalLink size={12} className="ml-1" />
+              </a>
+            </div>
           </div>
         );
         
