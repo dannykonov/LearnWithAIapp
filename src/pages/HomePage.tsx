@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowRight, Brain, Lightbulb, GraduationCap, ArrowDown, Check, X, Target, BookOpen, Rocket, ChevronDown, ChevronUp, Map, Search, Shapes, CheckSquare, Clock, Repeat, Briefcase, Star, ArrowUp, Users, Library, Mail } from 'lucide-react';
@@ -68,9 +68,59 @@ const HomePage = () => {
   const [topic, setTopic] = useState('');
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
+  
+  // --- State for Typing Effect ---
+  const placeholderTexts = [
+    "What do you want to learn?"
+  ];
+  const [subIndex, setSubIndex] = useState(0);
+  const [currentPlaceholder, setCurrentPlaceholder] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const typingSpeed = 100;
+  const deletingSpeed = 50;
+  const pauseDuration = 1500; // Pause after typing/deleting
+  // --- End State for Typing Effect ---
+
   const navigate = useNavigate();
   const { setUserAnswers } = useRoadmap();
   const { currentUser } = useAuth();
+
+  // --- useEffect for Continuous Typing Animation ---
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    const currentText = placeholderTexts[0]; // Always use the first (only) text
+
+    // Typing logic
+    if (!isDeleting && subIndex < currentText.length) {
+      timeoutId = setTimeout(() => {
+        setCurrentPlaceholder(prev => prev + currentText[subIndex]);
+        setSubIndex(prev => prev + 1);
+      }, typingSpeed);
+    }
+    // Pause at end of word before deleting
+    else if (!isDeleting && subIndex === currentText.length) {
+      timeoutId = setTimeout(() => {
+        setIsDeleting(true);
+      }, pauseDuration);
+    }
+    // Deleting logic
+    else if (isDeleting && subIndex > 0) {
+      timeoutId = setTimeout(() => {
+        setCurrentPlaceholder(prev => prev.slice(0, -1));
+        setSubIndex(prev => prev - 1);
+      }, deletingSpeed);
+    }
+    // Pause after deleting, then restart typing
+    else if (isDeleting && subIndex === 0) {
+       timeoutId = setTimeout(() => {
+         setIsDeleting(false); 
+         // No need to change placeholderIndex as there's only one phrase
+       }, pauseDuration / 2); // Shorter pause after deleting
+    }
+
+    return () => clearTimeout(timeoutId);
+  }, [subIndex, isDeleting]); // Dependencies are subIndex and isDeleting
+  // --- End useEffect for Typing Animation ---
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,11 +236,9 @@ const HomePage = () => {
 
   return (
     <>
-      {/* Hero Section Area */}
-      {/* Removed min-h-screen, added pt/pb */}
-      <div className="bg-gradient-to-b from-blue-50 to-blue-100 pt-8 pb-16 overflow-x-hidden"> 
+      {/* Hero Section Area - Light Theme */}
+      <div className="bg-gradient-to-b from-blue-50 to-blue-100 py-24 overflow-x-hidden"> 
         <div className="container px-4 mx-auto">
-          {/* Moved <main> wrapper inside container */}
           <main className="max-w-5xl mx-auto text-center">
             {/* === Hero Content (H1, P, Input) === */}
             <h1 className="text-4xl md:text-5xl font-bold text-lwai-deepBlue mb-6">
@@ -199,13 +247,13 @@ const HomePage = () => {
             <p className="text-xl text-gray-600 mb-12 max-w-3xl mx-auto">
               Get a personalized learning roadmap with curated resources tailored to your goals and preferences.
             </p>
-            <div className="mb-12">
+            <div className="mb-16">
               <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
                 <div className={`relative transition-all duration-300 ${isInputFocused ? 'transform scale-105' : ''}`}>
                   <Input
                     type="text"
-                    placeholder="What do you want to learn?"
-                    className="bg-white h-16 text-lg px-6 rounded-xl shadow-md"
+                    placeholder={currentPlaceholder + (isInputFocused ? '' : '|')}
+                    className="bg-white h-16 text-lg px-6 rounded-xl shadow-md border border-gray-200 focus:border-blue-500 focus:ring-blue-500 text-gray-800 placeholder-gray-500"
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     onFocus={() => setIsInputFocused(true)}
@@ -408,10 +456,10 @@ const HomePage = () => {
                  A personalized AI roadmap that analyzes your goals and skill level, then delivers exactly what to learn, when to learn it, and how to apply it—transforming overwhelming subjects into achievable steps.
                </p>
              </div>
+
              {/* 6 Steps Grid */}
              <div className="relative max-w-5xl mx-auto">
-               {/* Optional: Line connecting steps */} 
-               <div className="hidden lg:block absolute top-1/2 left-0 right-0 h-0.5 bg-blue-200 transform -translate-y-1/2 z-0" style={{top: 'calc(50% - 80px)'}}></div>
+               <div className="hidden lg:block absolute top-1/2 left-0 right-0 h-0.5 bg-indigo-700/50 transform -translate-y-1/2 z-0" style={{top: 'calc(50% - 80px)'}}></div>
                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
                  {steps.map((step, index) => (
                    <div 
@@ -574,7 +622,7 @@ const HomePage = () => {
       </section>
 
        {/* === Testimonials Section === */}
-       <section className="bg-blue-50/60 py-16"> {/* Use lighter blue */} 
+       <section className="py-16 bg-blue-50/60"> 
         <div className="container px-4 mx-auto">
           <main className="max-w-5xl mx-auto text-center">
             <div className="text-center mb-12">
@@ -612,39 +660,40 @@ const HomePage = () => {
       </section>
 
       {/* === Final CTA Section === */}
-      {/* This section uses its own gradient div */} 
+      {/* Removed base dark BG from section tag */}
        <section className="py-16">
          <div className="container px-4 mx-auto">
            <main className="max-w-5xl mx-auto text-center">
-             {/* Removed wrapping div, apply CTA styles directly */}
-             <div className="py-16 md:py-20 bg-gradient-to-r from-lwai-deepBlue to-indigo-700 text-white rounded-xl shadow-lg relative overflow-hidden">
+             {/* Restyled the inner div for light theme */}
+             <div className="py-16 md:py-20 bg-white text-gray-800 rounded-xl shadow-lg relative overflow-hidden border border-gray-200">
                <div className="max-w-3xl mx-auto text-center px-4 relative z-10">
-                 <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
-                   From Overwhelmed to <span className="text-yellow-300">Mastery</span> in Weeks
+                 {/* Updated text colors */}
+                 <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 text-lwai-deepBlue">
+                   From Overwhelmed to <span className="text-blue-600">Mastery</span> in Weeks
                  </h2>
-                 <p className="text-lg md:text-xl text-blue-100 mb-8">
+                 <p className="text-lg md:text-xl text-gray-600 mb-8">
                    Your AI coach builds tailored learning paths that make complex subjects simple—so you achieve in days what used to take months.
                  </p>
-                 {/* Scroll-to-Top Button */}
+                 {/* Updated Button style */}
                  <div className="mb-10">
                    <Button
                      onClick={scrollToTop}
                      size="lg"
-                     className="bg-white text-lwai-deepBlue hover:bg-gray-100 shadow-md text-lg px-8 py-3"
+                     className="bg-lwai-deepBlue text-white hover:bg-lwai-deepBlue/90 shadow-md text-lg px-8 py-3"
                    >
                      <ArrowUp className="mr-2 h-5 w-5" />
                      Start Your Learning Journey
                    </Button>
                  </div>
-                 {/* Mini Quotes Grid */}
+                 {/* Mini Quotes Grid - Updated card style */}
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    {miniQuotes.map((quote, index) => (
-                     <div key={index} className="bg-white/10 p-5 rounded-lg backdrop-blur-sm relative text-left">
+                     <div key={index} className="bg-blue-50/70 p-5 rounded-lg relative text-left border border-blue-100">
                        <div className="flex items-start">
-                         <Check className="h-5 w-5 text-yellow-300 mr-3 mt-1 flex-shrink-0" />
+                         <Check className="h-5 w-5 text-blue-600 mr-3 mt-1 flex-shrink-0" />
                          <div>
-                           <p className="italic text-white/90 mb-2 text-sm">&quot;{quote.text}&quot;</p>
-                           <p className="font-medium text-sm text-blue-200">— {quote.author}</p>
+                           <p className="italic text-gray-700 mb-2 text-sm">&quot;{quote.text}&quot;</p>
+                           <p className="font-medium text-sm text-gray-500">— {quote.author}</p>
                          </div>
                        </div>                       
                      </div>
