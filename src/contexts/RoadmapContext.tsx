@@ -18,6 +18,14 @@ export interface Resource {
   isFallback?: boolean;
 }
 
+// Test question interface for podcast resources
+export interface TestQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctAnswerIndex: number;
+}
+
 export interface RoadmapStep {
   id: string;
   stepNumber: number;

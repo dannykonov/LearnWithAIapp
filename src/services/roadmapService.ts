@@ -1,4 +1,4 @@
-import { UserAnswers, RoadmapStep, ResourceType } from '../contexts/RoadmapContext';
+import { UserAnswers, RoadmapStep, ResourceType, TestQuestion } from '../contexts/RoadmapContext';
 import { 
   collection, 
   query, 
@@ -12,7 +12,9 @@ import {
   serverTimestamp,
   addDoc
 } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
+import { db, functions } from '../firebaseConfig';
+import { httpsCallable } from 'firebase/functions';
+import OpenAI from "openai";
 
 // Debug Firebase configuration
 console.log("Firestore db instance:", db ? "Valid" : "Invalid");
@@ -383,5 +385,162 @@ export const createTestRoadmap = async (userId: string) => {
     return docRef.id;
   } catch (error) {
     console.error("Error creating test roadmap:", error);
+  }
+};
+
+// --- OpenAI Initialization (Frontend) ---
+// WARNING: Exposing API keys on the frontend is a security risk!
+// Use environment variables for keys.
+let openai: OpenAI | null = null;
+const openAiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
+
+if (openAiApiKey) {
+  try {
+    openai = new OpenAI({
+      apiKey: openAiApiKey,
+      dangerouslyAllowBrowser: true // **REQUIRED** for frontend usage, acknowledges the risk
+    });
+    console.log("Frontend OpenAI client initialized.");
+  } catch (error) {
+    console.error("Failed to initialize frontend OpenAI client:", error);
+    // Handle error appropriately, maybe show a message to the user
+  }
+} else {
+  console.warn("VITE_OPENAI_API_KEY environment variable not set. Cannot generate questions on frontend.");
+  // Disable features requiring frontend OpenAI calls if the key is missing
+}
+
+// --- Cloud Function Callers ---
+let _fetchTestQuestions: any; // Cache the function reference
+let _saveTestQuestions: any; // Cache the function reference
+
+try {
+  if (functions) {
+    _fetchTestQuestions = httpsCallable(functions, 'fetchTestQuestions');
+    _saveTestQuestions = httpsCallable(functions, 'saveTestQuestions');
+    console.log("Firebase Functions callables initialized (fetchTestQuestions, saveTestQuestions).");
+  } else {
+    console.error("Firebase Functions instance not available in firebaseConfig. Cannot initialize callables.");
+  }
+} catch (error) {
+  console.error("Error initializing Firebase Functions callables:", error);
+}
+
+// --- New Functions for Test Questions --- 
+
+/**
+ * Fetches existing test questions for a step from the backend.
+ */
+export const fetchTestQuestionsFromBackend = async (roadmapId: string, stepId: string): Promise<TestQuestion[] | null> => {
+  if (!_fetchTestQuestions) {
+    console.error("fetchTestQuestions callable function is not initialized.");
+    throw new Error("Firebase function caller not ready.");
+  }
+  try {
+    console.log(`Calling fetchTestQuestions for roadmap ${roadmapId}, step ${stepId}`);
+    const result = await _fetchTestQuestions({ roadmapId, stepId });
+    console.log("Received fetchTestQuestions result:", result);
+    // The callable function returns an object like { data: { questions: ... } }
+    const data = result.data as { questions: TestQuestion[] | null }; 
+    return data?.questions ?? null; // Return questions array or null
+  } catch (error) {
+    console.error("Error fetching test questions from backend:", error);
+    // Consider how to handle specific Firebase errors (e.g., not found, permission denied)
+    return null; // Return null on error to indicate fetch failed or no questions
+  }
+};
+
+/**
+ * Generates test questions directly on the frontend using OpenAI API.
+ * WARNING: Requires OpenAI API key to be exposed in the frontend bundle.
+ */
+export const generateTestQuestionsOnFrontend = async (
+  stepTitle: string,
+  stepDescription: string,
+  stepId: string, // Needed for unique question IDs
+  podcastTitle?: string
+): Promise<TestQuestion[]> => {
+  if (!openai) {
+    console.error("Frontend OpenAI client is not initialized. Cannot generate questions.");
+    throw new Error("OpenAI client not available. Check API Key configuration.");
+  }
+
+  // Re-use the same prompt structure as the backend version
+  const systemPrompt = 'You are an expert test creator. \n' +
+      'Create exactly 2 multiple choice questions to test knowledge about the learning step: "' + stepTitle + '".\n' +
+      'The step is described as: "' + stepDescription + '"\n' +
+      (podcastTitle ? 'This is related to the podcast: "' + podcastTitle + '"\n' : '') +
+      '\nYour response MUST be a valid JSON array with the following structure:\n' +
+      // ... (rest of the prompt as defined before) ...
+      '[{"question": "...", "options": [...], "correctAnswerIndex": 0}, {"question": "...", "options": [...], "correctAnswerIndex": 1}]\n' +
+      '\nGuidelines: ...\n' +
+      'DO NOT include any text before or after the JSON. Return ONLY valid JSON.';
+
+  try {
+    console.log("Calling OpenAI API from frontend...");
+    const completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+            { role: "system", content: systemPrompt },
+            { 
+              role: "user", 
+              content: 'Create 2 multiple choice questions for: "' + stepTitle + '" - "' + stepDescription + '".'
+            }
+        ],
+    });
+
+    const questionsContent = completion.choices[0].message?.content;
+    console.log("Received response from OpenAI (frontend).");
+
+    let questionsData: any[];
+    try {
+      questionsData = JSON.parse(questionsContent || '[]');
+      if (!Array.isArray(questionsData)) { throw new Error('Invalid structure'); }
+      // Add basic validation (can enhance this)
+      questionsData.forEach(q => {
+        if (!q.question || !Array.isArray(q.options) || q.options.length !== 4 || typeof q.correctAnswerIndex !== 'number') {
+          throw new Error('Invalid question format');
+        }
+      });
+    } catch (parseError) {
+      console.error("Error parsing JSON from OpenAI (frontend):", parseError, "Raw content:", questionsContent);
+      throw new Error("Failed to parse valid questions from AI response.");
+    }
+    
+    // Add unique IDs on the frontend
+    const questionsWithIds: TestQuestion[] = questionsData.map((question, index) => ({
+        ...question,
+        id: 'question-' + stepId + '-' + index + '-' + Date.now()
+    }));
+
+    return questionsWithIds;
+
+  } catch (error: any) {
+    console.error("Error generating test questions on frontend:", error);
+    // Handle OpenAI API errors (e.g., rate limits, auth errors)
+    if (error.response) {
+        console.error("OpenAI API Error Response (frontend):", error.response.data);
+    }
+    throw new Error("Failed to generate test questions via frontend OpenAI call.");
+  }
+};
+
+/**
+ * Saves generated test questions to the backend via Cloud Function.
+ */
+export const saveTestQuestionsToBackend = async (roadmapId: string, stepId: string, questions: TestQuestion[]): Promise<boolean> => {
+   if (!_saveTestQuestions) {
+    console.error("saveTestQuestions callable function is not initialized.");
+    throw new Error("Firebase function caller not ready.");
+  }
+  try {
+    console.log(`Calling saveTestQuestions for roadmap ${roadmapId}, step ${stepId}`);
+    const result = await _saveTestQuestions({ roadmapId, stepId, questions });
+    const data = result.data as { success: boolean };
+    console.log("Received saveTestQuestions result:", data);
+    return data?.success ?? false;
+  } catch (error) {
+    console.error("Error saving test questions to backend:", error);
+    return false; // Indicate save failed
   }
 };

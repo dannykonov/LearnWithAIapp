@@ -8,13 +8,15 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
 import { generatePodcastText, convertTextToSpeech, storeAudioInFirebase } from '@/services/podcastService';
 import { useAuth } from '@/contexts/AuthContext';
+import StepTest from './StepTest';
 
 interface RoadmapStepProps {
   step: RoadmapStepType;
   totalSteps: number;
+  roadmapId: string;
 }
 
-const RoadmapStep: React.FC<RoadmapStepProps> = ({ step, totalSteps }) => {
+const RoadmapStep: React.FC<RoadmapStepProps> = ({ step, totalSteps, roadmapId }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [podcastGenerated, setPodcastGenerated] = useState(false);
@@ -227,6 +229,7 @@ const RoadmapStep: React.FC<RoadmapStepProps> = ({ step, totalSteps }) => {
           
           <h4 className="font-medium text-lwai-deepBlue mb-3 pl-1">Learning Resources:</h4>
           <div className="space-y-4">
+            {/* Normal resources first */}
             {step.resources.map((resource, index) => (
               <ResourceCard
                 key={resource.id}
@@ -235,6 +238,63 @@ const RoadmapStep: React.FC<RoadmapStepProps> = ({ step, totalSteps }) => {
                 isLast={index === step.resources.length - 1}
               />
             ))}
+            
+            {/* Podcast Player - Styling updated for consistency */}
+            {podcastGenerated && podcastUrl && (
+              <div className="relative mt-4 mb-4 p-4 rounded-xl border bg-white border-gray-200">
+                <div className="flex items-start">
+                  <div className="w-5 h-5 mt-1"></div> {/* Empty space to align with resource checkboxes */}
+                  <div className="ml-3 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="badge-podcast flex items-center text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-md font-medium">
+                        <Headphones className="mr-1 h-4 w-4" />
+                        Podcast
+                      </span>
+                    </div>
+                    
+                    <h3 className="font-medium mt-1">Podcast: {step.title}</h3>
+                    
+                    <div className="mt-3 bg-white rounded-lg p-3">
+                      <audio
+                        className="w-full"
+                        controls
+                        src={podcastUrl}
+                      >
+                        Your browser does not support the audio element.
+                      </audio>
+                      <p className="text-xs text-gray-500 mt-2">
+                        This podcast was generated based on the learning step content.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Test generation section - positioned as the absolute last resource */}
+            <div className="relative mt-4 mb-4 p-4 rounded-xl border bg-white border-gray-200">
+              <div className="flex items-start">
+                <div className="w-5 h-5 mt-1"></div> {/* Empty space to align with resource checkboxes */}
+                <div className="ml-3 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="badge-test flex items-center text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-md font-medium">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1 h-4 w-4">
+                        <path d="m9 11-6 6v3h9l3-3"></path>
+                        <path d="m22 12-4.2 4.2-3-3L19 9"></path>
+                      </svg>
+                      Quiz
+                    </span>
+                  </div>
+                  
+                  <StepTest 
+                    stepTitle={step.title}
+                    stepDescription={step.description}
+                    roadmapId={roadmapId}
+                    stepId={step.id}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
           
           {/* Only show Generate Podcast button if podcast hasn't been generated yet */}
@@ -257,32 +317,6 @@ const RoadmapStep: React.FC<RoadmapStepProps> = ({ step, totalSteps }) => {
                   </>
                 )}
               </Button>
-            </div>
-          )}
-          
-          {/* Podcast Player - Styling updated for consistency */}
-          {podcastGenerated && podcastUrl && (
-            <div className="mt-6">
-              {/* Use similar card styling as resources */}
-              <div className="p-4 border rounded-lg bg-white shadow-sm transition-all hover:shadow-md">
-                <h4 className="font-medium text-lwai-deepBlue mb-3 flex items-center">
-                  <Headphones className="mr-2 h-5 w-5 text-lwai-skyBlue" /> {/* Adjusted icon color */}
-                  Podcast: {step.title}
-                </h4>
-                <div className="w-full rounded-lg">
-                  {/* Standard HTML5 audio player - styling is browser-dependent but container is styled */}
-                  <audio
-                    className="w-full h-10" // Adjusted height slightly
-                    controls
-                    src={podcastUrl}
-                  >
-                    Your browser does not support the audio element.
-                  </audio>
-                  <p className="text-xs text-gray-500 mt-2 pl-1">
-                    This podcast was generated based on the learning step content.
-                  </p>
-                </div>
-              </div>
             </div>
           )}
         </div>

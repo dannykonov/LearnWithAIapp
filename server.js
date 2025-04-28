@@ -1335,6 +1335,111 @@ DO NOT return any text before or after the JSON.`;
   }
 });
 
+// Add handler for generate-test-questions
+app.post('/api/generate-test-questions', async (req, res) => {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('ERROR: Missing OPENAI_API_KEY environment variable');
+    return res.status(500).json({ error: 'Server configuration error', message: 'OpenAI API key is missing' });
+  }
+
+  // Extract data from request body
+  const { stepTitle, stepDescription, podcastTitle } = req.body;
+
+  // Validate required fields
+  if (!stepTitle || !stepDescription) {
+    console.error('ERROR: Missing required fields in request body');
+    return res.status(400).json({ error: 'Missing required fields', message: 'Step title and description are required' });
+  }
+
+  try {
+    // Generate test questions with ChatGPT
+    console.log('Generating test questions with ChatGPT');
+    
+    const systemPrompt = `You are an expert test creator. 
+Create exactly 2 multiple choice questions to test knowledge about the learning step: "${stepTitle}".
+The step is described as: "${stepDescription}"
+${podcastTitle ? `This is related to the podcast: "${podcastTitle}"` : ''}
+
+Your response MUST be a valid JSON array with the following structure:
+[
+  {
+    "question": "First question text",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctAnswerIndex": 0
+  },
+  {
+    "question": "Second question text",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctAnswerIndex": 2
+  }
+]
+
+Guidelines:
+1. Each question should test understanding of important concepts related to the topic
+2. Each question must have exactly 4 options
+3. Exactly one option must be correct for each question (indicated by correctAnswerIndex)
+4. correctAnswerIndex must be 0, 1, 2, or 3, corresponding to the position in the options array
+5. Questions should be distinct and cover different aspects of the topic
+6. Make sure questions are thoughtful and appropriate for a knowledge check
+
+DO NOT include any text before or after the JSON. Return ONLY valid JSON.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo", // Using the smaller model for efficiency
+      messages: [
+        { role: "system", content: systemPrompt },
+        { 
+          role: "user", 
+          content: `Create 2 multiple choice questions to test knowledge about the learning step: "${stepTitle}" with description: "${stepDescription}".`
+        }
+      ]
+    });
+
+    const questionsContent = completion.choices[0].message?.content;
+    console.log('Test questions generated successfully');
+    
+    let questionsData;
+    try {
+      questionsData = JSON.parse(questionsContent || '[]');
+      if (!Array.isArray(questionsData) || questionsData.length !== 2) {
+        throw new Error('Invalid questions structure from ChatGPT');
+      }
+      
+      // Validate each question's structure
+      questionsData.forEach((question, index) => {
+        if (!question.question || !Array.isArray(question.options) || 
+            question.options.length !== 4 || 
+            typeof question.correctAnswerIndex !== 'number' ||
+            question.correctAnswerIndex < 0 || 
+            question.correctAnswerIndex > 3) {
+          throw new Error(`Question ${index + 1} has invalid structure`);
+        }
+      });
+    } catch (parseError) {
+      console.error('Error parsing JSON from ChatGPT response:', parseError);
+      throw new Error('Failed to parse questions data from ChatGPT');
+    }
+    
+    // Add unique IDs to each question
+    const questionsWithIds = questionsData.map((question, index) => ({
+      ...question,
+      id: `question-${index}-${Date.now()}`
+    }));
+    
+    return res.status(200).json({ questions: questionsWithIds });
+  } catch (error) {
+    console.error('Error generating test questions:', error);
+    return res.status(500).json({
+      error: 'Failed to generate test questions',
+      message: error.message || 'Unknown error occurred'
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Local API server running at http://localhost:${PORT}`);
@@ -1344,6 +1449,7 @@ app.listen(PORT, () => {
   console.log('- POST /api/generate-enhanced-roadmap');
   console.log('- POST /api/generate-article');
   console.log('- POST /api/generate-next-step');
+  console.log('- POST /api/generate-test-questions');
 });
 
 // Added empty line to trigger deployment 

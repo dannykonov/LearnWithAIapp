@@ -24,7 +24,7 @@ import { db } from '@/firebaseConfig';
 
 const RoadmapPage = () => {
   const navigate = useNavigate();
-  const { id } = useParams();
+  const { id: roadmapId } = useParams();
   const { 
     roadmap, 
     setRoadmap, 
@@ -44,18 +44,16 @@ const RoadmapPage = () => {
   // Fetch roadmap by ID if provided in URL
   useEffect(() => {
     const fetchRoadmap = async () => {
-      if (!id) return;
-      
-      try {
+      if (roadmapId) {
         setIsLoadingRoadmap(true);
-        console.log("Fetching roadmap with ID:", id);
+        console.log("Fetching roadmap with ID:", roadmapId);
         
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error("Roadmap fetch timed out after 10 seconds")), 10000)
         );
         
         const roadmapData = await Promise.race([
-          getRoadmapById(id),
+          getRoadmapById(roadmapId),
           timeoutPromise
         ]) as any;
         
@@ -112,41 +110,30 @@ const RoadmapPage = () => {
           });
           navigate('/roadmaps');
         }
-      } catch (error) {
-        console.error("Error fetching roadmap:", error);
-        toast({
-          title: "Error loading roadmap",
-          description: error instanceof Error ? error.message : "There was a problem loading this roadmap. Please try again.",
-          variant: "destructive",
-        });
+      } else {
+        console.error("Roadmap ID is missing!");
         navigate('/roadmaps');
-      } finally {
-        setIsLoadingRoadmap(false);
       }
+      setIsLoadingRoadmap(false);
     };
 
-    if (id) {
-      fetchRoadmap();
-    } else if (!roadmap.length && !isLoading) {
-      // Redirect if no ID and no roadmap in context (and not generating one)
-      navigate('/');
-    }
-  }, [id, setRoadmap, setUserAnswers, setProgress, navigate]);
+    fetchRoadmap();
+  }, [roadmapId, setRoadmap, setUserAnswers, setProgress, navigate]);
   
   // Update progress in Firestore when it changes (if we have an ID)
   useEffect(() => {
     const updateProgress = async () => {
-      if (!id || prevProgress === progress) return;
+      if (!roadmapId || prevProgress === progress) return;
       
       try {
-        await updateRoadmapProgress(id, progress);
+        await updateRoadmapProgress(roadmapId, progress);
       } catch (error) {
         console.error("Error updating roadmap progress:", error);
       }
     };
     
     updateProgress();
-  }, [id, progress, prevProgress]);
+  }, [roadmapId, progress, prevProgress]);
   
   // Show confetti when progress reaches 100% or crosses major milestones
   useEffect(() => {
@@ -259,7 +246,7 @@ const RoadmapPage = () => {
                 <Download className="h-4 w-4" />
                 Download PDF
               </Button>
-              {id ? (
+              {roadmapId ? (
                 <Button 
                   variant="outline" 
                   onClick={() => navigate('/roadmaps')}
@@ -334,6 +321,7 @@ const RoadmapPage = () => {
                   key={step.id} 
                   step={step} 
                   totalSteps={roadmap.length}
+                  roadmapId={roadmapId || ''}
                 />
                 {index > 0 && step.connectionText && (
                   <div className="mb-4 text-sm text-gray-600 italic bg-gray-50 p-3 rounded-md border-l-4 border-blue-400">
