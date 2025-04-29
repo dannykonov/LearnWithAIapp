@@ -119,6 +119,9 @@ const PaywallOverlay: React.FC<PaywallOverlayProps> = ({ roadmapId, topic }) => 
         <p className="paywall-secure">
           🔒 Secure payment via Stripe
         </p>
+        <p className="text-xs text-gray-500 mt-2">
+          Fully refundable if you're not satisfied!
+        </p>
       </div>
     </div>
   );
