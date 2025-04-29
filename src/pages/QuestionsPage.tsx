@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OnboardingQuestion from '@/components/OnboardingQuestion';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, FlaskConical } from 'lucide-react';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { generateRoadmap, GenerationEngine } from '@/services/roadmapService';
 import { toast } from '@/components/ui/use-toast';
 
@@ -27,12 +28,52 @@ const QuestionsPage = () => {
   const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading, setIsTestMode, isTestMode } = useRoadmap();
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [selectedEngine] = useState<GenerationEngine>('enhanced');
+  const [progress, setProgress] = useState(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const estimatedDuration = 30000;
   
   useEffect(() => {
     if (!currentUser || !userAnswers.topic) {
       navigate(currentUser ? '/' : '/login');
     }
   }, [currentUser, userAnswers.topic, navigate]);
+  
+  useEffect(() => {
+    if (isLoading) {
+      startTimeRef.current = Date.now();
+      setProgress(0);
+
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+
+      intervalRef.current = setInterval(() => {
+        if (startTimeRef.current) {
+          const elapsedTime = Date.now() - startTimeRef.current;
+          const calculatedProgress = Math.min(95, (elapsedTime / estimatedDuration) * 100);
+          setProgress(calculatedProgress);
+        }
+      }, 200);
+
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      if (startTimeRef.current !== null) {
+        setProgress(100);
+        setTimeout(() => setProgress(0), 500);
+        startTimeRef.current = null;
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isLoading]);
   
   const handleSubmit = useCallback(async () => {
     if (!currentUser) {
@@ -46,6 +87,8 @@ const QuestionsPage = () => {
     }
 
     setIsLoading(true);
+    setProgress(0);
+    startTimeRef.current = Date.now();
     try {
       const sanitizedAnswers = { 
         ...userAnswers,
@@ -407,6 +450,19 @@ const QuestionsPage = () => {
     }
   };
   
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
+        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-lg text-center">
+          <h2 className="text-2xl font-semibold mb-4 text-gray-800">Generating Your Roadmap...</h2>
+          <p className="text-gray-600 mb-6">Please wait while our AI crafts your personalized learning path. This may take a moment.</p>
+          <ProgressBar progress={progress} className="w-full mb-4" />
+          <p className="text-sm text-gray-500">Estimated time: ~30 seconds</p>
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 py-8 px-4 pt-20">
       <div className="container mx-auto">
@@ -420,13 +476,7 @@ const QuestionsPage = () => {
             </p>
           </div>
           
-          {isLoading ? (
-             <div className="flex flex-col items-center justify-center p-8 bg-white rounded-xl shadow-lg min-h-[300px]">
-               <Loader2 className="h-12 w-12 animate-spin text-lwai-deepBlue mb-4" />
-               <h2 className="text-xl font-semibold text-lwai-deepBlue mb-2">Generating Your Roadmap...</h2>
-               <p className="text-gray-600 text-center">Please wait while our AI crafts your personalized learning path. This may take a moment.</p>
-             </div>
-          ) : renderQuestion()}
+          {renderQuestion()}
         </main>
       </div>
     </div>
