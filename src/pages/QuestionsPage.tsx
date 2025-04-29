@@ -100,6 +100,8 @@ const QuestionsPage = () => {
         })()
       };
       
+      let docId: string | null = null;
+      
       if (isTestMode) {
         console.log('Generating placeholder roadmap in test mode');
         const placeholderRoadmap = Array.from({ length: 5 }, (_, i) => ({
@@ -149,6 +151,7 @@ const QuestionsPage = () => {
             progress: 0,
           };
           const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
+          docId = docRef.id;
           toast({
             title: "Test Roadmap Created",
             description: `A placeholder roadmap for ${userAnswers.topic} is ready.`,
@@ -172,6 +175,7 @@ const QuestionsPage = () => {
             progress: 0,
           };
           const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
+          docId = docRef.id;
           toast({
             title: "Roadmap Generated & Saved",
             description: `Your personalized learning roadmap for ${userAnswers.topic} is ready!`,
@@ -185,7 +189,11 @@ const QuestionsPage = () => {
         }
       }
 
-      navigate('/roadmap');
+      if (docId) {
+        navigate(`/roadmap/${docId}`);
+      } else {
+        navigate('/roadmap');
+      }
     } catch (error: any) {
       console.error('Error generating roadmap:', error);
       
