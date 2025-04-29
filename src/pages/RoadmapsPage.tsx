@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUserRoadmaps, deleteRoadmap, RoadmapDocument, createTestRoadmap } from '@/services/roadmapService';
+import { 
+  getUserRoadmaps, 
+  deleteRoadmap, 
+  RoadmapDocument, 
+  createTestRoadmap,
+  markRoadmapAsPaid 
+} from '@/services/roadmapService';
 import { Loader2, Search, Trash2, Plus, AlertTriangle, Bug } from 'lucide-react';
 import { 
   Dialog, 
@@ -40,6 +46,16 @@ const RoadmapsPage = () => {
         console.log("Loading roadmaps for user:", currentUser.uid);
         const userRoadmaps = await getUserRoadmaps(currentUser.uid);
         console.log("Loaded roadmaps:", userRoadmaps);
+        
+        // Mark all user's roadmaps as paid in localStorage
+        userRoadmaps.forEach(async (roadmap) => {
+          // Update the in-memory object for immediate display
+          roadmap.paymentStatus = 'paid';
+          
+          // Also update localStorage and Firestore via the utility
+          await markRoadmapAsPaid(roadmap.id);
+        });
+        
         setRoadmaps(userRoadmaps);
         setFilteredRoadmaps(userRoadmaps);
       } catch (error) {
@@ -69,16 +85,17 @@ const RoadmapsPage = () => {
     }
   }, [searchQuery, roadmaps]);
 
-  const handleOpenRoadmap = (roadmapId: string) => {
+  const handleOpenRoadmap = (roadmapId: string, paymentStatus?: string) => {
     console.log("Opening roadmap:", roadmapId);
+    
+    // Store payment status in local storage if available
+    if (paymentStatus === 'paid') {
+      localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
+      console.log(`Saved payment status 'paid' for roadmap ${roadmapId} to local storage`);
+    }
     
     // Try a direct navigation first
     navigate(`/roadmap/${roadmapId}`);
-    
-    // If we're still having issues, we could try a direct window location change
-    // which will force a full page reload
-    // Uncomment this if the navigate() approach isn't working
-    // window.location.href = `/roadmap/${roadmapId}`;
   };
 
   const handleDeleteClick = (roadmap: RoadmapDocument) => {
@@ -114,6 +131,15 @@ const RoadmapsPage = () => {
     setError(null);
     getUserRoadmaps(currentUser.uid)
       .then(userRoadmaps => {
+        // Mark all user's roadmaps as paid in localStorage
+        userRoadmaps.forEach(async (roadmap) => {
+          // Update the in-memory object for immediate display
+          roadmap.paymentStatus = 'paid';
+          
+          // Also update localStorage and Firestore via the utility
+          await markRoadmapAsPaid(roadmap.id);
+        });
+        
         setRoadmaps(userRoadmaps);
         setFilteredRoadmaps(userRoadmaps);
       })
@@ -255,7 +281,7 @@ const RoadmapsPage = () => {
                 >
                   <div 
                     className="p-4 cursor-pointer"
-                    onClick={() => handleOpenRoadmap(roadmap.id)}
+                    onClick={() => handleOpenRoadmap(roadmap.id, roadmap.paymentStatus)}
                   >
                     <span className="text-xs font-medium bg-blue-100 text-blue-800 py-1 px-2 rounded-full">
                       {formatDate(roadmap.createdAt)}

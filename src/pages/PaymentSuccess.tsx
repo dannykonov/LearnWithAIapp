@@ -53,6 +53,10 @@ const PaymentSuccess: React.FC = () => {
               title: "Payment Successful",
               description: "Your roadmap has been unlocked successfully!",
             });
+            // Save paid status to localStorage
+            localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
+            console.log(`[PaymentSuccess] Saved 'paid' status to localStorage for roadmap ${roadmapId}`);
+            
             // Explicitly set payment status to paid to ensure the view works
             setPaymentStatus('paid');
             setVerificationComplete(true);
@@ -66,6 +70,10 @@ const PaymentSuccess: React.FC = () => {
                   title: "Payment Successful",
                   description: "Your roadmap has been unlocked successfully!",
                 });
+                // Save paid status to localStorage
+                localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
+                console.log(`[PaymentSuccess] Saved 'paid' status to localStorage for roadmap ${roadmapId} on retry`);
+                
                 // Explicitly set payment status to paid to ensure the view works
                 setPaymentStatus('paid');
                 setVerificationComplete(true);
@@ -76,6 +84,10 @@ const PaymentSuccess: React.FC = () => {
                 });
                 // Set status to paid anyway to allow viewing
                 setPaymentStatus('paid');
+                // Also mark as paid in localStorage
+                localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
+                console.log(`[PaymentSuccess] Set as paid in localStorage despite pending status`);
+                
                 setVerificationComplete(true);
               }
             }, 3000); // Wait 3 seconds before retrying
@@ -107,6 +119,11 @@ const PaymentSuccess: React.FC = () => {
     // Force a set of payment status to paid again just before navigation
     setPaymentStatus('paid');
     
+    // Make sure localStorage has the paid status set
+    if (roadmapId) {
+      localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
+    }
+    
     // Get roadmap ID from state or URL
     if (roadmapId) {
       // Add a small delay to ensure state is updated before navigation
@@ -119,6 +136,7 @@ const PaymentSuccess: React.FC = () => {
       const urlRoadmapId = params.get('roadmap_id');
       
       if (urlRoadmapId) {
+        localStorage.setItem(`roadmap_payment_${urlRoadmapId}`, 'paid');
         navigate(`/roadmap/${urlRoadmapId}`);
       } else {
         navigate('/roadmaps');

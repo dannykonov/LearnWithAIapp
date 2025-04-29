@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { createCheckoutSession } from '@/services/paymentService';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, LockIcon } from 'lucide-react';
+import { useRoadmap } from '@/contexts/RoadmapContext';
 
 interface PaywallOverlayProps {
   roadmapId: string;
@@ -12,8 +13,27 @@ interface PaywallOverlayProps {
 const PaywallOverlay: React.FC<PaywallOverlayProps> = ({ roadmapId, topic }) => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = React.useState(false);
-
+  const { paymentStatus } = useRoadmap();
+  
+  // If payment status is already paid from context, don't render
+  if (paymentStatus === 'paid') {
+    console.log("[PaywallOverlay] Not rendering because context paymentStatus is 'paid'");
+    return null;
+  }
+  
   const handlePayment = async () => {
+    // Double-check localStorage before attempting payment (as a final safeguard)
+    const savedPaymentStatus = localStorage.getItem(`roadmap_payment_${roadmapId}`);
+    if (savedPaymentStatus === 'paid') {
+      console.log(`[PaywallOverlay] Roadmap ${roadmapId} is already paid according to localStorage (safeguard check)`);
+      // Don't setPaymentStatus here, rely on RoadmapPage
+      toast({
+        title: "Already Paid",
+        description: "This roadmap has already been paid for.",
+      });
+      return;
+    }
+    
     setIsLoading(true);
     try {
       // Create a checkout session
@@ -38,7 +58,8 @@ const PaywallOverlay: React.FC<PaywallOverlayProps> = ({ roadmapId, topic }) => 
             title: "Already Paid",
             description: "This roadmap has already been paid for.",
            });
-           // Optionally refresh page or context state here
+           // Also set localStorage
+           localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
            setIsLoading(false);
         } else {
           // Redirect to Stripe Checkout

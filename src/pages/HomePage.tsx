@@ -144,6 +144,9 @@ const HomePage = () => {
     // Explicitly set payment status to unpaid for new roadmap
     setPaymentStatus('unpaid');
     
+    // Also clear any locally stored payment status for this session
+    localStorage.removeItem('current_roadmap_paid');
+    
     if (currentUser) {
       // Set initial user answers with the topic
       setUserAnswers({

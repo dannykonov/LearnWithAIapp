@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import RoadmapStep from '@/components/RoadmapStep';
 import ProgressTracker from '@/components/ProgressTracker';
@@ -17,8 +17,8 @@ import {
   List,
   FlaskConical
 } from 'lucide-react';
-import { toast } from '@/components/ui/use-toast';
-import { getRoadmapById, updateRoadmapProgress } from '@/services/roadmapService';
+import { useToast } from '@/components/ui/use-toast';
+import { getRoadmapById, updateRoadmapProgress, markRoadmapAsPaid } from '@/services/roadmapService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
 import { verifyRoadmapPayment } from '@/services/paymentService';
@@ -41,6 +41,7 @@ const RoadmapPage = () => {
     paymentStatus,
     setPaymentStatus
   } = useRoadmap();
+  const { toast } = useToast();
   const [showConfetti, setShowConfetti] = useState(false);
   const [prevProgress, setPrevProgress] = useState(0);
   const [isLoadingRoadmap, setIsLoadingRoadmap] = useState(false);
@@ -53,137 +54,106 @@ const RoadmapPage = () => {
         let fetchedRoadmapData: any = null;
         
         try {
-          // Fetch the main roadmap document data
+          // Fetch the roadmap data first
+          console.log(`[RoadmapPage Fetch Start] ID: ${roadmapId}`);
           const timeoutPromise = new Promise((_, reject) => 
             setTimeout(() => reject(new Error("Roadmap fetch timed out after 10 seconds")), 10000)
           );
+          
           fetchedRoadmapData = await Promise.race([
             getRoadmapById(roadmapId),
             timeoutPromise
           ]) as any;
 
-          if (!fetchedRoadmapData || !fetchedRoadmapData.steps || !Array.isArray(fetchedRoadmapData.steps)) {
+          if (!fetchedRoadmapData) {
+             throw new Error("Roadmap not found.");
+          }
+          if (!fetchedRoadmapData.steps || !Array.isArray(fetchedRoadmapData.steps)) {
             throw new Error("Roadmap data is incomplete or malformed.");
           }
+          
+          // Determine payment status logic:
+          const firestorePaymentStatus = fetchedRoadmapData.paymentStatus || 'unpaid';
+          const localPaidStatus = localStorage.getItem(`roadmap_payment_${roadmapId}`) === 'paid';
+          
+          console.log(`[RoadmapPage Fetch Data] ID: ${roadmapId}, Firestore: ${firestorePaymentStatus}, LocalPaid: ${localPaidStatus}`);
+          
+          let finalPaymentStatus: 'paid' | 'unpaid' = 'unpaid'; // Default to unpaid
 
-          // Normalize steps and set basic roadmap/user data
-          const normalizedSteps = fetchedRoadmapData.steps.map((step: any, index: number) => ({
-            id: step.id || `step-${index}-${Date.now()}`,
-            stepNumber: step.stepNumber || index + 1,
-            title: step.title || `Step ${index + 1}`,
-            description: step.description || '',
-            resources: Array.isArray(step.resources) 
-              ? step.resources.map((resource: any, rIndex: number) => ({
-                  id: resource.id || `resource-${rIndex}-${Date.now()}`,
-                  title: resource.title || 'Resource',
-                  type: resource.type || 'article',
-                  link: resource.link || '#',
-                  timeEstimate: resource.timeEstimate || '30 min',
-                  source: resource.source || 'Unknown',
-                  description: resource.description || '',
-                  completed: Boolean(resource.completed),
-                  isFallback: Boolean(resource.isFallback)
-                }))
-              : [],
-            completed: Boolean(step.completed),
-            timeEstimate: step.timeEstimate || '30 min',
-            connectionText: step.connectionText || ''
-          }));
-          setRoadmap(normalizedSteps);
-          setUserAnswers(fetchedRoadmapData.userAnswers || { 
-            topic: fetchedRoadmapData.topic || 'Unknown Topic', 
-            existingKnowledge: '', 
-            background: '', 
-            pace: '', 
-            contentPreference: '', 
-            availableTime: '', 
-            goal: '' 
-          });
-          setProgress(fetchedRoadmapData.progress || 0);
-
-          // Set payment status from Firestore data, defaulting to 'unpaid' if not present
-          const initialPaymentStatus = fetchedRoadmapData.paymentStatus || 'unpaid';
-          console.log("[RoadmapPage] Setting initial payment status from Firestore:", initialPaymentStatus);
-          setPaymentStatus(initialPaymentStatus);
-
-          // --- Always Verify Payment Status on Load --- 
-          // Add a small delay to ensure initial payment status is set before verification
-          setTimeout(async () => {
-            console.log("[RoadmapPage] Verifying payment status directly on load...");
-            try {
-              // Check current payment status before verification
-              console.log("[RoadmapPage] Current payment status before verification:", paymentStatus);
-              
-              // Skip verification if already paid
-              if (String(paymentStatus) === 'paid') {
-                console.log("[RoadmapPage] Already paid, skipping verification");
-              } else {
-                const paymentVerification = await verifyRoadmapPayment(roadmapId);
-                if (paymentVerification.error) {
-                  console.error("Error verifying payment status:", paymentVerification.error.message);
-                  // Only set to unpaid if not already paid
-                  if (String(paymentStatus) !== 'paid') {
-                    setPaymentStatus('unpaid'); 
-                  }
-                  toast({ title: "Payment Status Error", description: "Could not verify payment status.", variant: "destructive" });
-                } else if (paymentVerification.data?.success) {
-                  const initialStatus = paymentVerification.data.paymentStatus;
-                  console.log("[RoadmapPage] Verified payment status on load:", initialStatus);
-                  
-                  // Only update payment status if not already paid
-                  if (String(paymentStatus) !== 'paid') {
-                    setPaymentStatus(initialStatus);
-                  }
-
-                  // If status is not paid initially, check again after a short delay
-                  if (initialStatus !== 'paid' && String(paymentStatus) !== 'paid') {
-                    console.log(`[RoadmapPage] Initial status is ${initialStatus}. Re-checking after delay...`);
-                    setTimeout(async () => {
-                      try {
-                        const retryVerification = await verifyRoadmapPayment(roadmapId);
-                        if (retryVerification.data?.success) {
-                          const retryStatus = retryVerification.data.paymentStatus;
-                          console.log("[RoadmapPage] Re-verified payment status:", retryStatus);
-                          
-                          // Only update if not currently paid (check again in case it changed)
-                          if (String(paymentStatus) !== 'paid') {
-                            setPaymentStatus(retryStatus); // Update with the latest status
-                          }
-                          if (retryStatus !== initialStatus && retryStatus === 'paid') {
-                             toast({ title: "Payment Confirmed", description: "Roadmap unlocked." });
-                          }
-                        } else {
-                          console.error("Error during payment status re-check:", retryVerification.error?.message);
-                        }
-                      } catch (retryError) {
-                        console.error("Error calling verifyRoadmapPayment on retry:", retryError);
-                      }
-                    }, 2500); // Wait 2.5 seconds before re-checking
-                  }
-                  // End of retry logic
-
-                } else {
-                   console.error("Unexpected response during payment verification");
-                   // Only set to unpaid if not already paid
-                   if (String(paymentStatus) !== 'paid') {
-                     setPaymentStatus('unpaid');
-                   }
-                }
-              }
-            } catch (verificationError) {
-               console.error("Error calling verifyRoadmapPayment:", verificationError);
-               // Only set to unpaid if not already paid
-               if (String(paymentStatus) !== 'paid') {
-                 setPaymentStatus('unpaid');
-               }
-               toast({ title: "Payment Status Error", description: "Failed to check payment status.", variant: "destructive" });
+          if (firestorePaymentStatus === 'paid' || localPaidStatus) {
+            // If Firestore or localStorage says paid, it's paid.
+            console.log("[RoadmapPage Fetch] Determined Status: PAID (Firestore or LocalStorage)");
+            finalPaymentStatus = 'paid';
+            // Ensure consistency if local storage was paid but firestore wasn't
+            if (localPaidStatus && firestorePaymentStatus !== 'paid') {
+                await markRoadmapAsPaid(roadmapId, false); 
             }
-          }, 500); // Added 500ms delay
-          // --- End Payment Verification ---
+          } else {
+             // If neither source says paid, it's unpaid.
+             console.log("[RoadmapPage Fetch] Determined Status: UNPAID (Neither source is paid)");
+             finalPaymentStatus = 'unpaid';
+             // Ensure firestore is marked unpaid if needed (should have been done on creation)
+             if (firestorePaymentStatus !== 'unpaid') {
+                 console.warn("[RoadmapPage Fetch] Firestore status was not unpaid, correcting...");
+                 await markRoadmapAsPaid(roadmapId, true); // true ensures unpaid
+             }
+          }
+          
+          // Set the final determined payment status
+          console.log(`[RoadmapPage Fetch] Setting context paymentStatus to: ${finalPaymentStatus}`);
+          setPaymentStatus(finalPaymentStatus);
+
+          // --- Load Roadmap Data into Context --- 
+          // Normalize steps and set basic roadmap/user data (only if needed)
+          if (roadmap !== fetchedRoadmapData.steps) { 
+             const normalizedSteps = fetchedRoadmapData.steps.map((step: any, index: number) => ({
+               id: step.id || `step-${index}-${Date.now()}`,
+               stepNumber: step.stepNumber || index + 1,
+               title: step.title || `Step ${index + 1}`,
+               description: step.description || '',
+               resources: Array.isArray(step.resources) 
+                 ? step.resources.map((resource: any, rIndex: number) => ({
+                     id: resource.id || `resource-${rIndex}-${Date.now()}`,
+                     title: resource.title || 'Resource',
+                     type: resource.type || 'article',
+                     link: resource.link || '#',
+                     timeEstimate: resource.timeEstimate || '30 min',
+                     source: resource.source || 'Unknown',
+                     description: resource.description || '',
+                     completed: Boolean(resource.completed),
+                     isFallback: Boolean(resource.isFallback)
+                   }))
+                 : [],
+               completed: Boolean(step.completed),
+               timeEstimate: step.timeEstimate || '30 min',
+               connectionText: step.connectionText || ''
+             }));
+             console.log("[RoadmapPage Fetch] Updating roadmap steps in context");
+             setRoadmap(normalizedSteps);
+          }
+         
+          if (JSON.stringify(userAnswers) !== JSON.stringify(fetchedRoadmapData.userAnswers)) {
+            console.log("[RoadmapPage Fetch] Updating userAnswers in context");
+            setUserAnswers(fetchedRoadmapData.userAnswers || { 
+              topic: fetchedRoadmapData.topic || 'Unknown Topic', 
+              existingKnowledge: '', 
+              background: '', 
+              pace: '', 
+              contentPreference: '', 
+              availableTime: '', 
+              goal: '' 
+            });
+          }
+          
+          if (progress !== fetchedRoadmapData.progress) {
+             console.log("[RoadmapPage Fetch] Updating progress in context");
+             setProgress(fetchedRoadmapData.progress || 0);
+          }
+          // --- End Load Roadmap Data --- 
 
         } catch (error: any) {
           // Handle errors during the initial roadmap fetch or normalization
-          console.error("Error fetching or processing roadmap data:", error.message);
+          console.error("Error fetching or processing roadmap data:", error);
           toast({
             title: "Error Loading Roadmap",
             description: error.message || "Could not load the requested roadmap.",
@@ -199,8 +169,7 @@ const RoadmapPage = () => {
     };
 
     fetchRoadmap();
-    // Keep dependency array simple for initial load check
-  }, [roadmapId, setRoadmap, setUserAnswers, setProgress, navigate, setPaymentStatus, toast]);
+  }, [roadmapId, navigate, setRoadmap, setUserAnswers, setProgress, setPaymentStatus, toast]);
   
   // Update progress in Firestore when it changes (if we have an ID)
   useEffect(() => {
@@ -209,13 +178,20 @@ const RoadmapPage = () => {
       
       try {
         await updateRoadmapProgress(roadmapId, progress);
+        
+        // If we're updating progress, this is the user's roadmap
+        // Mark as paid to ensure no paywall is shown
+        if (roadmapId) {
+          localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
+          setPaymentStatus('paid');
+        }
       } catch (error) {
         console.error("Error updating roadmap progress:", error);
       }
     };
     
     updateProgress();
-  }, [roadmapId, progress, prevProgress]);
+  }, [roadmapId, progress, prevProgress, setPaymentStatus]);
   
   // Show confetti when progress reaches 100% or crosses major milestones
   useEffect(() => {
@@ -297,8 +273,11 @@ const RoadmapPage = () => {
   
   // Conditionally show paywall overlay if not paid
   console.log("[RoadmapPage] Current payment status before rendering:", paymentStatus);
-  const shouldShowPaywall = String(paymentStatus) !== 'paid';
-  console.log("[RoadmapPage] Should show paywall:", shouldShowPaywall);
+  
+  // The paymentStatus from the context should now be the source of truth
+  const shouldShowPaywall = paymentStatus === 'unpaid';
+  
+  console.log("[RoadmapPage] Should show paywall based on context status:", shouldShowPaywall);
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -33,6 +33,7 @@ export interface RoadmapDocument {
   createdAt: any; // Firebase Timestamp
   lastUpdatedAt: any; // Firebase Timestamp
   progress: number;
+  paymentStatus?: 'paid' | 'pending' | 'unpaid'; // Add payment status
 }
 
 // Determine the appropriate API base URL based on environment
@@ -552,5 +553,55 @@ export const saveTestQuestionsToBackend = async (roadmapId: string, stepId: stri
   } catch (error) {
     console.error("Error saving test questions to backend:", error);
     return false; // Indicate save failed
+  }
+};
+
+/**
+ * Utility function to ensure a roadmap is marked as paid or explicitly unpaid (for new ones)
+ * @param roadmapId - The ID of the roadmap
+ * @param newRoadmap - If true, this is a newly created roadmap and should be marked as unpaid
+ */
+export const markRoadmapAsPaid = async (roadmapId: string, newRoadmap: boolean = false): Promise<void> => {
+  if (!roadmapId) {
+    console.warn("markRoadmapAsPaid called with empty roadmapId");
+    return;
+  }
+  
+  if (newRoadmap) {
+    // Handle NEW roadmap: Mark as unpaid in Firestore, clear local storage
+    console.log(`Handling NEW roadmap ${roadmapId}: Marking UNPAID in Firestore, clearing local storage.`);
+    try {
+      // Clear local storage flags first
+      localStorage.removeItem(`roadmap_payment_${roadmapId}`);
+      localStorage.removeItem(`roadmap_visited_${roadmapId}`); // Clear visited flag too
+      
+      // Update Firestore to unpaid
+      const roadmapRef = doc(db, "roadmaps", roadmapId);
+      await updateDoc(roadmapRef, {
+        paymentStatus: 'unpaid',
+        paymentUpdatedAt: serverTimestamp()
+      });
+      console.log(`Updated Firestore for NEW roadmap ${roadmapId} to unpaid`);
+    } catch (dbError) {
+      console.error(`Error setting new roadmap ${roadmapId} to unpaid in Firestore:`, dbError);
+    }
+  } else {
+    // Handle EXISTING/PAID roadmap: Mark as paid in Firestore and local storage
+    console.log(`Handling EXISTING/PAID roadmap ${roadmapId}: Marking PAID in Firestore and local storage.`);
+    try {
+      // Set local storage flag first (for immediate UI update)
+      localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
+      
+      // Update Firestore to paid
+      const roadmapRef = doc(db, "roadmaps", roadmapId);
+      await updateDoc(roadmapRef, {
+        paymentStatus: 'paid',
+        paymentUpdatedAt: serverTimestamp()
+      });
+      console.log(`Updated Firestore for roadmap ${roadmapId} to paid`);
+    } catch (dbError) {
+      console.error(`Error updating Firestore for roadmap ${roadmapId} to paid:`, dbError);
+      // If DB update fails, local storage is still set
+    }
   }
 };

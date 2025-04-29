@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, FlaskConical } from 'lucide-react';
 import { ProgressBar } from '@/components/ui/progress-bar';
-import { generateRoadmap, GenerationEngine } from '@/services/roadmapService';
+import { generateRoadmap, GenerationEngine, markRoadmapAsPaid } from '@/services/roadmapService';
 import { toast } from '@/components/ui/use-toast';
 
 const QuestionsPage = () => {
@@ -195,6 +195,9 @@ const QuestionsPage = () => {
       }
 
       if (docId) {
+        // Mark this as a new roadmap that requires payment
+        await markRoadmapAsPaid(docId, true);
+        
         navigate(`/roadmap/${docId}`);
       } else {
         navigate('/roadmaps');
