@@ -310,18 +310,28 @@ export const updateRoadmapProgress = async (roadmapId: string, progress: number)
 };
 
 /**
- * Update a roadmap's steps
+ * Update the steps of a roadmap (preserves paymentStatus)
  */
 export const updateRoadmapSteps = async (roadmapId: string, steps: RoadmapStep[]): Promise<boolean> => {
   try {
-    await updateDoc(doc(db, "roadmaps", roadmapId), {
-      steps,
-      lastUpdatedAt: serverTimestamp()
+    const roadmapRef = doc(db, "roadmaps", roadmapId);
+    
+    // Get current document to preserve paymentStatus
+    const currentDoc = await getDoc(roadmapRef);
+    const currentData = currentDoc.data() || {};
+    const currentPaymentStatus = currentData.paymentStatus || 'unpaid';
+    
+    await updateDoc(roadmapRef, {
+      steps: steps,
+      lastUpdatedAt: serverTimestamp(),
+      // Preserve the existing payment status
+      paymentStatus: currentPaymentStatus
     });
+    
     return true;
   } catch (error) {
     console.error("Error updating roadmap steps:", error);
-    throw error;
+    return false;
   }
 };
 

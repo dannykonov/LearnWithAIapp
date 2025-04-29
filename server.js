@@ -161,7 +161,12 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+
+// Configure CORS specifically for your frontend development server
+app.use(cors({
+  origin: 'http://localhost:8080' // Allow requests from your frontend dev server
+}));
+
 app.use(bodyParser.json({ limit: '10mb' })); // Increased size limit for large roadmaps
 
 // Define API routes directly with handler function

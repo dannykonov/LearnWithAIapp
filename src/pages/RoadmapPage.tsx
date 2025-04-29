@@ -21,6 +21,8 @@ import { toast } from '@/components/ui/use-toast';
 import { getRoadmapById, updateRoadmapProgress } from '@/services/roadmapService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
+import { verifyRoadmapPayment } from '@/services/paymentService';
+import PaywallOverlay from '@/components/PaywallOverlay';
 
 const RoadmapPage = () => {
   const navigate = useNavigate();
@@ -35,7 +37,9 @@ const RoadmapPage = () => {
     generateMoreSteps, 
     isLoading, 
     setIsLoading,
-    isTestMode 
+    isTestMode,
+    paymentStatus,
+    setPaymentStatus
   } = useRoadmap();
   const [showConfetti, setShowConfetti] = useState(false);
   const [prevProgress, setPrevProgress] = useState(0);
@@ -46,25 +50,24 @@ const RoadmapPage = () => {
     const fetchRoadmap = async () => {
       if (roadmapId) {
         setIsLoadingRoadmap(true);
-        console.log("Fetching roadmap with ID:", roadmapId);
+        let fetchedRoadmapData: any = null;
         
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Roadmap fetch timed out after 10 seconds")), 10000)
-        );
-        
-        const roadmapData = await Promise.race([
-          getRoadmapById(roadmapId),
-          timeoutPromise
-        ]) as any;
-        
-        console.log("Raw roadmap data received:", JSON.stringify(roadmapData));
-        
-        if (roadmapData && roadmapData.steps && Array.isArray(roadmapData.steps)) {
-          console.log("Roadmap data loaded successfully:", roadmapData);
-          console.log("Steps count:", roadmapData.steps.length);
-          console.log("Step structure sample:", JSON.stringify(roadmapData.steps[0]));
-          
-          const normalizedSteps = roadmapData.steps.map((step: any, index: number) => ({
+        try {
+          // Fetch the main roadmap document data
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Roadmap fetch timed out after 10 seconds")), 10000)
+          );
+          fetchedRoadmapData = await Promise.race([
+            getRoadmapById(roadmapId),
+            timeoutPromise
+          ]) as any;
+
+          if (!fetchedRoadmapData || !fetchedRoadmapData.steps || !Array.isArray(fetchedRoadmapData.steps)) {
+            throw new Error("Roadmap data is incomplete or malformed.");
+          }
+
+          // Normalize steps and set basic roadmap/user data
+          const normalizedSteps = fetchedRoadmapData.steps.map((step: any, index: number) => ({
             id: step.id || `step-${index}-${Date.now()}`,
             stepNumber: step.stepNumber || index + 1,
             title: step.title || `Step ${index + 1}`,
@@ -86,11 +89,9 @@ const RoadmapPage = () => {
             timeEstimate: step.timeEstimate || '30 min',
             connectionText: step.connectionText || ''
           }));
-          
-          console.log("Normalized steps:", normalizedSteps.length);
           setRoadmap(normalizedSteps);
-          setUserAnswers(roadmapData.userAnswers || { 
-            topic: roadmapData.topic || 'Unknown Topic', 
+          setUserAnswers(fetchedRoadmapData.userAnswers || { 
+            topic: fetchedRoadmapData.topic || 'Unknown Topic', 
             existingKnowledge: '', 
             background: '', 
             pace: '', 
@@ -98,14 +99,94 @@ const RoadmapPage = () => {
             availableTime: '', 
             goal: '' 
           });
-          setProgress(roadmapData.progress || 0);
-        } else {
-          console.error("Roadmap data is incomplete:", roadmapData);
-          console.error("roadmapData.steps exists:", Boolean(roadmapData?.steps));
-          console.error("roadmapData.steps is array:", Array.isArray(roadmapData?.steps));
+          setProgress(fetchedRoadmapData.progress || 0);
+
+          // Set payment status from Firestore data, defaulting to 'unpaid' if not present
+          const initialPaymentStatus = fetchedRoadmapData.paymentStatus || 'unpaid';
+          console.log("[RoadmapPage] Setting initial payment status from Firestore:", initialPaymentStatus);
+          setPaymentStatus(initialPaymentStatus);
+
+          // --- Always Verify Payment Status on Load --- 
+          // Add a small delay to ensure initial payment status is set before verification
+          setTimeout(async () => {
+            console.log("[RoadmapPage] Verifying payment status directly on load...");
+            try {
+              // Check current payment status before verification
+              console.log("[RoadmapPage] Current payment status before verification:", paymentStatus);
+              
+              // Skip verification if already paid
+              if (String(paymentStatus) === 'paid') {
+                console.log("[RoadmapPage] Already paid, skipping verification");
+              } else {
+                const paymentVerification = await verifyRoadmapPayment(roadmapId);
+                if (paymentVerification.error) {
+                  console.error("Error verifying payment status:", paymentVerification.error.message);
+                  // Only set to unpaid if not already paid
+                  if (String(paymentStatus) !== 'paid') {
+                    setPaymentStatus('unpaid'); 
+                  }
+                  toast({ title: "Payment Status Error", description: "Could not verify payment status.", variant: "destructive" });
+                } else if (paymentVerification.data?.success) {
+                  const initialStatus = paymentVerification.data.paymentStatus;
+                  console.log("[RoadmapPage] Verified payment status on load:", initialStatus);
+                  
+                  // Only update payment status if not already paid
+                  if (String(paymentStatus) !== 'paid') {
+                    setPaymentStatus(initialStatus);
+                  }
+
+                  // If status is not paid initially, check again after a short delay
+                  if (initialStatus !== 'paid' && String(paymentStatus) !== 'paid') {
+                    console.log(`[RoadmapPage] Initial status is ${initialStatus}. Re-checking after delay...`);
+                    setTimeout(async () => {
+                      try {
+                        const retryVerification = await verifyRoadmapPayment(roadmapId);
+                        if (retryVerification.data?.success) {
+                          const retryStatus = retryVerification.data.paymentStatus;
+                          console.log("[RoadmapPage] Re-verified payment status:", retryStatus);
+                          
+                          // Only update if not currently paid (check again in case it changed)
+                          if (String(paymentStatus) !== 'paid') {
+                            setPaymentStatus(retryStatus); // Update with the latest status
+                          }
+                          if (retryStatus !== initialStatus && retryStatus === 'paid') {
+                             toast({ title: "Payment Confirmed", description: "Roadmap unlocked." });
+                          }
+                        } else {
+                          console.error("Error during payment status re-check:", retryVerification.error?.message);
+                        }
+                      } catch (retryError) {
+                        console.error("Error calling verifyRoadmapPayment on retry:", retryError);
+                      }
+                    }, 2500); // Wait 2.5 seconds before re-checking
+                  }
+                  // End of retry logic
+
+                } else {
+                   console.error("Unexpected response during payment verification");
+                   // Only set to unpaid if not already paid
+                   if (String(paymentStatus) !== 'paid') {
+                     setPaymentStatus('unpaid');
+                   }
+                }
+              }
+            } catch (verificationError) {
+               console.error("Error calling verifyRoadmapPayment:", verificationError);
+               // Only set to unpaid if not already paid
+               if (String(paymentStatus) !== 'paid') {
+                 setPaymentStatus('unpaid');
+               }
+               toast({ title: "Payment Status Error", description: "Failed to check payment status.", variant: "destructive" });
+            }
+          }, 500); // Added 500ms delay
+          // --- End Payment Verification ---
+
+        } catch (error: any) {
+          // Handle errors during the initial roadmap fetch or normalization
+          console.error("Error fetching or processing roadmap data:", error.message);
           toast({
-            title: "Roadmap data incomplete",
-            description: "The requested roadmap data is malformed or incomplete.",
+            title: "Error Loading Roadmap",
+            description: error.message || "Could not load the requested roadmap.",
             variant: "destructive",
           });
           navigate('/roadmaps');
@@ -118,7 +199,8 @@ const RoadmapPage = () => {
     };
 
     fetchRoadmap();
-  }, [roadmapId, setRoadmap, setUserAnswers, setProgress, navigate]);
+    // Keep dependency array simple for initial load check
+  }, [roadmapId, setRoadmap, setUserAnswers, setProgress, navigate, setPaymentStatus, toast]);
   
   // Update progress in Firestore when it changes (if we have an ID)
   useEffect(() => {
@@ -213,181 +295,206 @@ const RoadmapPage = () => {
     );
   }
   
+  // Conditionally show paywall overlay if not paid
+  console.log("[RoadmapPage] Current payment status before rendering:", paymentStatus);
+  const shouldShowPaywall = String(paymentStatus) !== 'paid';
+  console.log("[RoadmapPage] Should show paywall:", shouldShowPaywall);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 py-8 px-4 pt-20">
-      <CelebrationConfetti show={showConfetti} />
-      
-      <div className="container mx-auto">
-        <main className="max-w-4xl mx-auto">
-          <div className="mb-8 text-center">
-            <div className="inline-block bg-lwai-deepBlue/10 px-4 py-2 rounded-full mb-4">
-              <span className="font-medium text-lwai-deepBlue">Learning: {userAnswers.topic}</span>
-              
-              {/* ADDED: Test mode indicator */}
-              {isTestMode && (
-                <span className="ml-2 inline-flex items-center bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full">
-                  <FlaskConical className="h-3 w-3 mr-1" /> Test Mode
-                </span>
-              )}
-            </div>
-            <h1 className="text-3xl font-bold text-lwai-deepBlue bg-clip-text text-transparent bg-gradient-to-r from-lwai-deepBlue to-lwai-skyBlue">
-              Your Learning Roadmap
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Follow this personalized path to master {userAnswers.topic}.
-            </p>
-            
-            <div className="flex flex-wrap justify-center gap-3 mt-4">
-              <Button variant="outline" className="flex items-center gap-2">
-                <Share2 className="h-4 w-4" />
-                Share Roadmap
-              </Button>
-              <Button variant="outline" className="flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                Download PDF
-              </Button>
-              {roadmapId ? (
-                <Button 
-                  variant="outline" 
-                  onClick={() => navigate('/roadmaps')}
-                  className="flex items-center gap-2"
-                >
-                  <List className="h-4 w-4" />
-                  All Roadmaps
-                </Button>
-              ) : (
-                <Button 
-                  variant="outline" 
-                  onClick={() => navigate('/')}
-                  className="flex items-center gap-2"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  New Roadmap
-                </Button>
-              )}
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      {isLoadingRoadmap ? (
+        <div className="flex flex-col items-center justify-center min-h-screen">
+          <Loader2 className="h-12 w-12 animate-spin text-lwai-deepBlue mb-4" />
+          <h2 className="text-xl font-semibold text-lwai-deepBlue">Loading your roadmap...</h2>
+        </div>
+      ) : (
+        <>
+          {/* Show confetti when progress reaches milestones */}
+          {showConfetti && <CelebrationConfetti show={showConfetti} />}
           
-          <ProgressTracker />
-          
-          {/* Learning strategy based on user preferences */}
-          <div className="glass-card p-5 mb-8 max-w-3xl mx-auto">
-            <div className="flex items-center mb-3">
-              <Lightbulb className="h-5 w-5 text-yellow-500 mr-2" />
-              <h3 className="text-lg font-bold text-lwai-deepBlue">Your Learning Strategy</h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="bg-white/70 p-3 rounded-lg border border-gray-200">
-                <p className="text-gray-600">
-                  <span className="font-medium text-lwai-deepBlue">Pace:</span> {userAnswers.pace || "Standard"}
-                </p>
-              </div>
-              
-              <div className="bg-white/70 p-3 rounded-lg border border-gray-200">
-                <p className="text-gray-600">
-                  <span className="font-medium text-lwai-deepBlue">Content Preference:</span> {userAnswers.contentPreference || "Mixed"}
-                </p>
-              </div>
-              
-              <div className="bg-white/70 p-3 rounded-lg border border-gray-200">
-                <p className="text-gray-600">
-                  <span className="font-medium text-lwai-deepBlue">Time Available:</span> {userAnswers.availableTime || "Flexible"}
-                </p>
-              </div>
-            </div>
-            
-            {/* ADDED: Test mode warning if active */}
-            {isTestMode && (
-              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                <p className="flex items-center">
-                  <FlaskConical className="h-4 w-4 mr-2" />
-                  <strong>Test Mode Active:</strong> 
-                  <span className="ml-1">
-                    This is a placeholder roadmap for testing. AI generation features are disabled.
-                  </span>
-                </p>
-              </div>
-            )}
-          </div>
-          
-          {/* Roadmap visual journey with better alignment and spacing */}
-          <div className="relative max-w-3xl mx-auto">
-            <div className="absolute top-0 bottom-0 left-[29px] w-1 bg-lwai-lightBlue/40 rounded-full -z-10"></div>
-            
-            {roadmap.map((step, index) => (
-              <>
-                <RoadmapStep 
-                  key={step.id} 
-                  step={step} 
-                  totalSteps={roadmap.length}
-                  roadmapId={roadmapId || ''}
-                />
-                {index > 0 && step.connectionText && (
-                  <div className="mb-4 text-sm text-gray-600 italic bg-gray-50 p-3 rounded-md border-l-4 border-blue-400">
-                    {step.connectionText}
-                  </div>
-                )}
-              </>
-            ))}
-            
-            <div className="flex justify-center mt-8 mb-12">
-              <Button
-                onClick={generateMoreSteps}
-                disabled={isLoading || isTestMode}
-                className="bg-lwai-deepBlue hover:bg-lwai-deepBlue/90 text-white flex items-center shadow-lg hover:shadow-xl transition-all"
-                title={isTestMode ? "Cannot generate more steps in Test Mode" : "Generate next learning step"}
-              >
-                {/* CHANGED: Ensure loading state isn't shown in test mode */}
-                {isLoading && !isTestMode ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating more content...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Generate More Learning Steps
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-          
-          {/* Section for completed roadmap celebration */}
-          {progress === 100 && (
-            <div className="mt-12 p-8 bg-gradient-to-r from-lwai-deepBlue/10 to-lwai-skyBlue/20 rounded-xl border border-lwai-skyBlue/30 text-center max-w-3xl mx-auto">
-              <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-lwai-deepBlue to-lwai-skyBlue flex items-center justify-center mb-4 shadow-lg">
-                <GraduationCap className="h-10 w-10 text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-lwai-deepBlue mb-2">
-                Congratulations on Mastering {userAnswers.topic}!
-              </h2>
-              <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                You've completed all the steps in your personalized learning roadmap. Ready for a new challenge?
-              </p>
-              
-              <div className="flex flex-col sm:flex-row justify-center gap-4">
-                <Button
-                  onClick={() => navigate('/')}
-                  className="bg-lwai-deepBlue hover:bg-lwai-deepBlue/90 text-white"
-                >
-                  Start a New Learning Journey
-                </Button>
-                
-                <Button
-                  onClick={generateMoreSteps}
-                  variant="outline"
-                  className="border-lwai-skyBlue text-lwai-deepBlue hover:bg-lwai-skyBlue/10"
-                >
-                  <Award className="mr-2 h-4 w-4" />
-                  Advanced Topics
-                </Button>
-              </div>
-            </div>
+          {/* Conditionally show paywall overlay if not paid */}
+          {shouldShowPaywall && roadmapId && (
+            <PaywallOverlay 
+              roadmapId={roadmapId} 
+              topic={userAnswers.topic} 
+            />
           )}
-        </main>
-      </div>
+          
+          <div className={`${shouldShowPaywall ? 'roadmap-blurred' : ''}`}>
+            <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 py-8 px-4 pt-20">
+              <div className="container mx-auto">
+                <main className="max-w-4xl mx-auto">
+                  <div className="mb-8 text-center">
+                    <div className="inline-block bg-lwai-deepBlue/10 px-4 py-2 rounded-full mb-4">
+                      <span className="font-medium text-lwai-deepBlue">Learning: {userAnswers.topic}</span>
+                      
+                      {/* Test mode indicator */}
+                      {isTestMode && (
+                        <span className="ml-2 inline-flex items-center bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full">
+                          <FlaskConical className="h-3 w-3 mr-1" /> Test Mode
+                        </span>
+                      )}
+                    </div>
+                    <h1 className="text-3xl font-bold text-lwai-deepBlue bg-clip-text text-transparent bg-gradient-to-r from-lwai-deepBlue to-lwai-skyBlue">
+                      Your Learning Roadmap
+                    </h1>
+                    <p className="text-gray-600 mt-2">
+                      Follow this personalized path to master {userAnswers.topic}.
+                    </p>
+                    
+                    <div className="flex flex-wrap justify-center gap-3 mt-4">
+                      <Button variant="outline" className="flex items-center gap-2">
+                        <Share2 className="h-4 w-4" />
+                        Share Roadmap
+                      </Button>
+                      <Button variant="outline" className="flex items-center gap-2">
+                        <Download className="h-4 w-4" />
+                        Download PDF
+                      </Button>
+                      {roadmapId ? (
+                        <Button 
+                          variant="outline" 
+                          onClick={() => navigate('/roadmaps')}
+                          className="flex items-center gap-2"
+                        >
+                          <List className="h-4 w-4" />
+                          All Roadmaps
+                        </Button>
+                      ) : (
+                        <Button 
+                          variant="outline" 
+                          onClick={() => navigate('/')}
+                          className="flex items-center gap-2"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                          New Roadmap
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <ProgressTracker />
+                  
+                  {/* Learning strategy based on user preferences */}
+                  <div className="glass-card p-5 mb-8 max-w-3xl mx-auto">
+                    <div className="flex items-center mb-3">
+                      <Lightbulb className="h-5 w-5 text-yellow-500 mr-2" />
+                      <h3 className="text-lg font-bold text-lwai-deepBlue">Your Learning Strategy</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="bg-white/70 p-3 rounded-lg border border-gray-200">
+                        <p className="text-gray-600">
+                          <span className="font-medium text-lwai-deepBlue">Pace:</span> {userAnswers.pace || "Standard"}
+                        </p>
+                      </div>
+                      
+                      <div className="bg-white/70 p-3 rounded-lg border border-gray-200">
+                        <p className="text-gray-600">
+                          <span className="font-medium text-lwai-deepBlue">Content Preference:</span> {userAnswers.contentPreference || "Mixed"}
+                        </p>
+                      </div>
+                      
+                      <div className="bg-white/70 p-3 rounded-lg border border-gray-200">
+                        <p className="text-gray-600">
+                          <span className="font-medium text-lwai-deepBlue">Time Available:</span> {userAnswers.availableTime || "Flexible"}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Test mode warning if active */}
+                    {isTestMode && (
+                      <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                        <p className="flex items-center">
+                          <FlaskConical className="h-4 w-4 mr-2" />
+                          <strong>Test Mode Active:</strong> 
+                          <span className="ml-1">
+                            This is a placeholder roadmap for testing. AI generation features are disabled.
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Roadmap visual journey with better alignment and spacing */}
+                  <div className="relative max-w-3xl mx-auto">
+                    <div className="absolute top-0 bottom-0 left-[29px] w-1 bg-lwai-lightBlue/40 rounded-full -z-10"></div>
+                    
+                    {roadmap.map((step, index) => (
+                      <React.Fragment key={step.id}>
+                        <RoadmapStep 
+                          step={step} 
+                          totalSteps={roadmap.length}
+                          roadmapId={roadmapId || ''}
+                        />
+                        {index > 0 && step.connectionText && (
+                          <div className="mb-4 text-sm text-gray-600 italic bg-gray-50 p-3 rounded-md border-l-4 border-blue-400">
+                            {step.connectionText}
+                          </div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                    
+                    <div className="flex justify-center mt-8 mb-12">
+                      <Button
+                        onClick={generateMoreSteps}
+                        disabled={isLoading || isTestMode}
+                        className="bg-lwai-deepBlue hover:bg-lwai-deepBlue/90 text-white flex items-center shadow-lg hover:shadow-xl transition-all"
+                        title={isTestMode ? "Cannot generate more steps in Test Mode" : "Generate next learning step"}
+                      >
+                        {isLoading && !isTestMode ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Generating more content...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Generate More Learning Steps
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Section for completed roadmap celebration */}
+                  {progress === 100 && (
+                    <div className="mt-12 p-8 bg-gradient-to-r from-lwai-deepBlue/10 to-lwai-skyBlue/20 rounded-xl border border-lwai-skyBlue/30 text-center max-w-3xl mx-auto">
+                      <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-lwai-deepBlue to-lwai-skyBlue flex items-center justify-center mb-4 shadow-lg">
+                        <GraduationCap className="h-10 w-10 text-white" />
+                      </div>
+                      <h2 className="text-2xl font-bold text-lwai-deepBlue mb-2">
+                        Congratulations on Mastering {userAnswers.topic}!
+                      </h2>
+                      <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                        You've completed all the steps in your personalized learning roadmap. Ready for a new challenge?
+                      </p>
+                      
+                      <div className="flex flex-col sm:flex-row justify-center gap-4">
+                        <Button
+                          onClick={() => navigate('/')}
+                          className="bg-lwai-deepBlue hover:bg-lwai-deepBlue/90 text-white"
+                        >
+                          Start a New Learning Journey
+                        </Button>
+                        
+                        <Button
+                          onClick={generateMoreSteps}
+                          variant="outline"
+                          className="border-lwai-skyBlue text-lwai-deepBlue hover:bg-lwai-skyBlue/10"
+                        >
+                          <Award className="mr-2 h-4 w-4" />
+                          Advanced Topics
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </main>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

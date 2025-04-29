@@ -25,13 +25,13 @@ import { toast } from '@/components/ui/use-toast';
 const QuestionsPage = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading, setIsTestMode, isTestMode } = useRoadmap();
+  const { userAnswers, setUserAnswers, setRoadmap, setIsLoading, isLoading, setIsTestMode, isTestMode, setPaymentStatus } = useRoadmap();
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [selectedEngine] = useState<GenerationEngine>('enhanced');
   const [progress, setProgress] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null);
-  const estimatedDuration = 30000;
+  const estimatedDuration = 60000;
   
   useEffect(() => {
     if (!currentUser || !userAnswers.topic) {
@@ -102,6 +102,9 @@ const QuestionsPage = () => {
       
       let docId: string | null = null;
       
+      // Explicitly set payment status to unpaid for new roadmap
+      setPaymentStatus('unpaid');
+      
       if (isTestMode) {
         console.log('Generating placeholder roadmap in test mode');
         const placeholderRoadmap = Array.from({ length: 5 }, (_, i) => ({
@@ -149,6 +152,7 @@ const QuestionsPage = () => {
             createdAt: serverTimestamp(),
             lastUpdatedAt: serverTimestamp(),
             progress: 0,
+            paymentStatus: 'unpaid'
           };
           const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
           docId = docRef.id;
@@ -173,6 +177,7 @@ const QuestionsPage = () => {
             createdAt: serverTimestamp(),
             lastUpdatedAt: serverTimestamp(),
             progress: 0,
+            paymentStatus: 'unpaid'
           };
           const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
           docId = docRef.id;
@@ -192,7 +197,7 @@ const QuestionsPage = () => {
       if (docId) {
         navigate(`/roadmap/${docId}`);
       } else {
-        navigate('/roadmap');
+        navigate('/roadmaps');
       }
     } catch (error: any) {
       console.error('Error generating roadmap:', error);
@@ -205,7 +210,7 @@ const QuestionsPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentUser, userAnswers, selectedEngine, setIsLoading, setRoadmap, navigate, isTestMode]);
+  }, [currentUser, userAnswers, selectedEngine, setIsLoading, setRoadmap, navigate, isTestMode, setPaymentStatus]);
   
   const handleTestModeSubmit = useCallback(() => {
     if (!currentUser) {
@@ -465,7 +470,7 @@ const QuestionsPage = () => {
           <h2 className="text-2xl font-semibold mb-4 text-gray-800">Generating Your Roadmap...</h2>
           <p className="text-gray-600 mb-6">Please wait while our AI crafts your personalized learning path. This may take a moment.</p>
           <ProgressBar progress={progress} className="w-full mb-4" />
-          <p className="text-sm text-gray-500">Estimated time: ~30 seconds</p>
+          <p className="text-sm text-gray-500">Estimated time: ~1 minute</p>
         </div>
       </div>
     );

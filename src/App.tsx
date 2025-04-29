@@ -11,6 +11,7 @@ import RoadmapsPage from "@/pages/RoadmapsPage";
 import NotFound from "@/pages/NotFound";
 import SignUpPage from "@/pages/SignUpPage";
 import LoginPage from "@/pages/LoginPage";
+import PaymentSuccess from "@/pages/PaymentSuccess";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/Header";
 
@@ -30,9 +31,9 @@ const App = () => (
             <Route path="/login" element={<LoginPage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/questions" element={<QuestionsPage />} />
-              <Route path="/roadmap" element={<RoadmapPage />} />
               <Route path="/roadmaps" element={<RoadmapsPage />} />
               <Route path="/roadmap/:id" element={<RoadmapPage />} />
+              <Route path="/payment-success" element={<PaymentSuccess />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

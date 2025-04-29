@@ -82,8 +82,16 @@ const HomePage = () => {
   // --- End State for Typing Effect ---
 
   const navigate = useNavigate();
-  const { setUserAnswers } = useRoadmap();
+  const { setUserAnswers, setRoadmap, setPaymentStatus } = useRoadmap();
   const { currentUser } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    // Reset roadmap state when coming to homepage
+    setRoadmap([]);
+    // Reset payment status to unpaid
+    setPaymentStatus('unpaid');
+  }, [setRoadmap, setPaymentStatus]);
 
   // --- useEffect for Continuous Typing Animation ---
   useEffect(() => {
@@ -125,22 +133,35 @@ const HomePage = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedTopic = topic.trim();
-    if (trimmedTopic) {
-      if (currentUser) {
-        setUserAnswers({
-          topic: trimmedTopic,
-          existingKnowledge: '',
-          background: '',
-          pace: '',
-          contentPreference: '',
-          availableTime: '',
-          goal: ''
-        });
-        navigate('/questions');
-      } else {
-        sessionStorage.setItem('topicBeforeLogin', trimmedTopic);
-        navigate('/login');
-      }
+    
+    if (!trimmedTopic) {
+      return;
+    }
+    
+    // Reset any existing roadmap data
+    setRoadmap([]);
+    
+    // Explicitly set payment status to unpaid for new roadmap
+    setPaymentStatus('unpaid');
+    
+    if (currentUser) {
+      // Set initial user answers with the topic
+      setUserAnswers({
+        topic: trimmedTopic,
+        existingKnowledge: '',
+        background: '',
+        pace: '',
+        contentPreference: '',
+        availableTime: '',
+        goal: ''
+      });
+      
+      // Navigate to questions page
+      navigate('/questions');
+    } else {
+      // Store topic for after login
+      sessionStorage.setItem('topicBeforeLogin', trimmedTopic);
+      navigate('/login');
     }
   };
 

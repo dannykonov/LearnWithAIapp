@@ -59,6 +59,7 @@ interface RoadmapContextType {
   completedResources: number;
   totalResources: number;
   isTestMode: boolean;
+  paymentStatus: 'paid' | 'pending' | 'unpaid';
   
   // Actions
   setUserAnswers: (answers: UserAnswers) => void;
@@ -70,6 +71,7 @@ interface RoadmapContextType {
   generateMoreSteps: () => void;
   setProgress: (newProgress: number) => void;
   setIsTestMode: (isTest: boolean) => void;
+  setPaymentStatus: (status: 'paid' | 'pending' | 'unpaid') => void;
 }
 
 // Default values
@@ -96,6 +98,7 @@ const RoadmapContext = createContext<RoadmapContextType>({
   completedResources: 0,
   totalResources: 0,
   isTestMode: false,
+  paymentStatus: 'unpaid',
   
   setUserAnswers: () => {},
   setRoadmap: () => {},
@@ -106,6 +109,7 @@ const RoadmapContext = createContext<RoadmapContextType>({
   generateMoreSteps: () => {},
   setProgress: () => {},
   setIsTestMode: () => {},
+  setPaymentStatus: () => {},
 });
 
 // Create provider component
@@ -118,6 +122,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isLoading, setIsLoadingState] = useState(false);
   const [manualProgress, setManualProgress] = useState<number | null>(null);
   const [isTestMode, setIsTestModeState] = useState(false);
+  const [paymentStatus, setPaymentStatusState] = useState<'paid' | 'pending' | 'unpaid'>('unpaid');
   
   // Derived stats
   const totalSteps = roadmap.length;
@@ -322,6 +327,11 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsTestModeState(isTest);
   }, []);
 
+  // Wrapped in useCallback
+  const setPaymentStatus = useCallback((status: 'paid' | 'pending' | 'unpaid') => {
+    setPaymentStatusState(status);
+  }, []);
+
   const contextValue = useMemo(() => ({
     roadmap,
     userAnswers,
@@ -334,6 +344,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     completedResources,
     totalResources,
     isTestMode,
+    paymentStatus,
     setUserAnswers,
     setRoadmap,
     toggleStepCompleted,
@@ -343,12 +354,13 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     generateMoreSteps,
     setProgress,
     setIsTestMode,
+    setPaymentStatus,
   }), [
     roadmap, userAnswers, userId, currentStep, isLoading, progress, 
     totalSteps, completedSteps, completedResources, totalResources,
-    isTestMode,
+    isTestMode, paymentStatus,
     setUserAnswers, setRoadmap, toggleStepCompleted, toggleResourceCompleted, 
-    setCurrentStep, setIsLoading, generateMoreSteps, setProgress, setIsTestMode 
+    setCurrentStep, setIsLoading, generateMoreSteps, setProgress, setIsTestMode, setPaymentStatus 
   ]);
 
   return (
