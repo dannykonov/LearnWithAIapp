@@ -98,7 +98,7 @@ const PaywallOverlay: React.FC<PaywallOverlayProps> = ({ roadmapId, topic }) => 
           Your personalized roadmap for <strong>{topic}</strong> is ready!
         </p>
         <p className="paywall-price">
-          Pay just <strong>$0.50</strong> to access your complete roadmap
+          Pay just <strong>$1.99</strong> to access your complete roadmap
           with step-by-step guidance and curated resources.
         </p>
         <Button 
@@ -113,7 +113,7 @@ const PaywallOverlay: React.FC<PaywallOverlayProps> = ({ roadmapId, topic }) => 
               Processing...
             </>
           ) : (
-            <>Unlock for $0.50</>
+            <>Unlock for $1.99</>
           )}
         </Button>
         <p className="paywall-secure">
