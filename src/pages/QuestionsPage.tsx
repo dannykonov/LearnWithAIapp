@@ -21,6 +21,7 @@ import { Loader2, FlaskConical } from 'lucide-react';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { generateRoadmap, GenerationEngine, markRoadmapAsPaid } from '@/services/roadmapService';
 import { toast } from '@/components/ui/use-toast';
+import { FEATURES } from '@/config/features';
 
 const QuestionsPage = () => {
   const navigate = useNavigate();
@@ -102,8 +103,8 @@ const QuestionsPage = () => {
       
       let docId: string | null = null;
       
-      // Explicitly set payment status to unpaid for new roadmap
-      setPaymentStatus('unpaid');
+      // Set payment status based on feature flag
+      setPaymentStatus(FEATURES.REQUIRE_PAYMENT ? 'unpaid' : 'paid');
       
       if (isTestMode) {
         console.log('Generating placeholder roadmap in test mode');
@@ -152,7 +153,7 @@ const QuestionsPage = () => {
             createdAt: serverTimestamp(),
             lastUpdatedAt: serverTimestamp(),
             progress: 0,
-            paymentStatus: 'unpaid'
+            paymentStatus: FEATURES.REQUIRE_PAYMENT ? 'unpaid' : 'paid'
           };
           const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
           docId = docRef.id;
@@ -177,7 +178,7 @@ const QuestionsPage = () => {
             createdAt: serverTimestamp(),
             lastUpdatedAt: serverTimestamp(),
             progress: 0,
-            paymentStatus: 'unpaid'
+            paymentStatus: FEATURES.REQUIRE_PAYMENT ? 'unpaid' : 'paid'
           };
           const docRef = await addDoc(collection(db, "roadmaps"), roadmapDoc);
           docId = docRef.id;

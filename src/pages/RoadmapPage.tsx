@@ -5,6 +5,8 @@ import ProgressTracker from '@/components/ProgressTracker';
 import CelebrationConfetti from '@/components/CelebrationConfetti';
 import { Button } from '@/components/ui/button';
 import { useRoadmap } from '@/contexts/RoadmapContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { FEATURES } from '@/config/features';
 import { 
   Loader2, 
   Plus, 
@@ -275,7 +277,7 @@ const RoadmapPage = () => {
   console.log("[RoadmapPage] Current payment status before rendering:", paymentStatus);
   
   // The paymentStatus from the context should now be the source of truth
-  const shouldShowPaywall = paymentStatus === 'unpaid';
+  const shouldShowPaywall = FEATURES.REQUIRE_PAYMENT && paymentStatus === 'unpaid';
   
   console.log("[RoadmapPage] Should show paywall based on context status:", shouldShowPaywall);
 

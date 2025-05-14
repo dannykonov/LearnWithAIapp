@@ -15,6 +15,7 @@ import {
 import { db, functions } from '../firebaseConfig';
 import { httpsCallable } from 'firebase/functions';
 import OpenAI from "openai";
+import { FEATURES } from '@/config/features';
 
 // Debug Firebase configuration
 console.log("Firestore db instance:", db ? "Valid" : "Invalid");
@@ -567,8 +568,27 @@ export const markRoadmapAsPaid = async (roadmapId: string, newRoadmap: boolean =
     return;
   }
   
-  if (newRoadmap) {
-    // Handle NEW roadmap: Mark as unpaid in Firestore, clear local storage
+  // If payments are not required, always mark as paid regardless of whether it's new
+  if (!FEATURES.REQUIRE_PAYMENT || !newRoadmap) {
+    // Handle EXISTING/PAID roadmap: Mark as paid in Firestore and local storage
+    console.log(`Handling roadmap ${roadmapId}: Marking PAID in Firestore and local storage.`);
+    try {
+      // Set local storage flag first (for immediate UI update)
+      localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
+      
+      // Update Firestore to paid
+      const roadmapRef = doc(db, "roadmaps", roadmapId);
+      await updateDoc(roadmapRef, {
+        paymentStatus: 'paid',
+        paymentUpdatedAt: serverTimestamp()
+      });
+      console.log(`Updated Firestore for roadmap ${roadmapId} to paid`);
+    } catch (dbError) {
+      console.error(`Error updating Firestore for roadmap ${roadmapId} to paid:`, dbError);
+      // If DB update fails, local storage is still set
+    }
+  } else if (newRoadmap && FEATURES.REQUIRE_PAYMENT) {
+    // Handle NEW roadmap when payments are required: Mark as unpaid in Firestore, clear local storage
     console.log(`Handling NEW roadmap ${roadmapId}: Marking UNPAID in Firestore, clearing local storage.`);
     try {
       // Clear local storage flags first
@@ -584,24 +604,6 @@ export const markRoadmapAsPaid = async (roadmapId: string, newRoadmap: boolean =
       console.log(`Updated Firestore for NEW roadmap ${roadmapId} to unpaid`);
     } catch (dbError) {
       console.error(`Error setting new roadmap ${roadmapId} to unpaid in Firestore:`, dbError);
-    }
-  } else {
-    // Handle EXISTING/PAID roadmap: Mark as paid in Firestore and local storage
-    console.log(`Handling EXISTING/PAID roadmap ${roadmapId}: Marking PAID in Firestore and local storage.`);
-    try {
-      // Set local storage flag first (for immediate UI update)
-      localStorage.setItem(`roadmap_payment_${roadmapId}`, 'paid');
-      
-      // Update Firestore to paid
-      const roadmapRef = doc(db, "roadmaps", roadmapId);
-      await updateDoc(roadmapRef, {
-        paymentStatus: 'paid',
-        paymentUpdatedAt: serverTimestamp()
-      });
-      console.log(`Updated Firestore for roadmap ${roadmapId} to paid`);
-    } catch (dbError) {
-      console.error(`Error updating Firestore for roadmap ${roadmapId} to paid:`, dbError);
-      // If DB update fails, local storage is still set
     }
   }
 };

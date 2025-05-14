@@ -1,6 +1,7 @@
 import { httpsCallable, getFunctions } from 'firebase/functions';
 import { functions, auth } from '../firebaseConfig'; // Import auth
 import axios from 'axios'; // Use axios for standard HTTPS requests
+import { FEATURES } from '@/config/features';
 
 // Define types for payment responses
 interface CheckoutSessionResponseData {
@@ -42,6 +43,17 @@ export const createCheckoutSession = async (
   successUrl: string, 
   cancelUrl: string
 ): Promise<ApiResponse<CheckoutSessionResponseData>> => {
+  // If payments not required, return success directly
+  if (!FEATURES.REQUIRE_PAYMENT) {
+    return { 
+      data: {
+        success: true,
+        message: "Free access granted",
+        paymentStatus: "paid"
+      } 
+    };
+  }
+
   const currentUser = auth.currentUser;
   if (!currentUser) {
     return { error: { code: 'unauthenticated', message: 'User not logged in' } };
@@ -90,6 +102,17 @@ export const createCheckoutSession = async (
 export const verifyRoadmapPayment = async (
   roadmapId: string
 ): Promise<ApiResponse<PaymentVerificationResponseData>> => {
+  // If payments not required, always return paid status
+  if (!FEATURES.REQUIRE_PAYMENT) {
+    return { 
+      data: {
+        success: true,
+        paymentStatus: "paid",
+        isPaid: true
+      } 
+    };
+  }
+
   const currentUser = auth.currentUser;
   if (!currentUser) {
     return { error: { code: 'unauthenticated', message: 'User not logged in' } };
